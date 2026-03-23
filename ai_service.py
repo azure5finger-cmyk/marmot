@@ -1,34 +1,40 @@
-from __future__ import annotations 
-# 구버전 python에서  list[ScheduleItem], dict[StudyType, dict] 사용할 수 있게 해줌.
+from __future__ import annotations
+
 from enum import Enum
 
 from fastapi import APIRouter, FastAPI
 from pydantic import BaseModel, Field
 
-router = APIRouter(prefix="/ai_service", tags=["ai_service"])
 
-# Enums(enumerations)
+router = APIRouter(prefix="/ai", tags=["ai"])
 
-class StudyType(str, Enum):                 # 학습유형 
-    memorization = "memorization"           # 암기형
-    comprehension = "comprehension"         # 이해형
-    problem_solving = "problem_solving"     # 문제풀이형         
-    practice = "practice"                   # 실습형
+
+# -----------------------------
+# Enums
+# -----------------------------
+class StudyType(str, Enum):
+    memorization = "memorization"        # 암기형
+    comprehension = "comprehension"      # 이해형
+    problem_solving = "problem_solving"  # 문제풀이형
+    practice = "practice"                # 실습형
+
 
 class SessionType(str, Enum):
     study = "study"
     short_break = "short_break"
     long_break = "long_break"
 
+
 class RecommendationFit(str, Enum):
-    exact = "exact"      # 목표 시간과 정확히 일치
-    under = "under"      # 목표 시간보다 조금 짧음 (최대 -10분)
-    over = "over"        # 목표 시간보다 조금 김 (최대 +20분)
-    closest = "closest"  # exact/under/over 모두 없을 때 가장 가까운 후보
+    exact = "exact"    # 목표 시간과 정확히 일치
+    under = "under"    # 목표 시간보다 조금 짧음 (최대 -10분)
+    over = "over"      # 목표 시간보다 조금 김 (최대 +20분)
 
 
-# Rules : StudyType별 기본 타이머 시간 규칙.
-
+# -----------------------------
+# Rules
+# -----------------------------
+# 공부 유형별 기본 포모도로 규칙
 BASE_RULES: dict[StudyType, dict] = {
     StudyType.memorization: {
         "label": "암기형",
@@ -84,11 +90,15 @@ RECOMMENDATION_PATTERNS: dict[StudyType, list[dict]] = {
 LONG_BREAK_MINUTES = 20  # 긴 휴식 고정 시간 (분)
 UNDER_LIMIT = 10         # under 허용 범위: 목표보다 최대 10분 짧은 것까지 허용
 OVER_LIMIT = 20          # over  허용 범위: 목표보다 최대 20분 긴 것까지 허용
+MAX_SESSIONS = 13        # 최대 세션 수
 
-# Request, Response Models
+
+# -----------------------------
+# Request / Response Models
+# -----------------------------
 class StudyPlanRequest(BaseModel):
     study_type: StudyType = Field(..., description="공부 유형")
-    total_study_minutes: int = Field(..., ge=30, le=720, description="총 학습 시간(휴식 포함)")
+    total_study_minutes: int = Field(..., ge=30, le=480, description="총 학습 시간(휴식 포함)")
 
 
 class BaseRule(BaseModel):
@@ -127,7 +137,9 @@ class StudyPlanResponse(BaseModel):
     summary: str
 
 
+# -----------------------------
 # Helper Functions
+# -----------------------------
 def get_base_rule(study_type: StudyType) -> dict:
     return BASE_RULES[study_type]
 
@@ -163,7 +175,6 @@ def build_schedule(
 
         # cycle_sessions 번째 세션 직후에만 긴 휴식 삽입
         # (마지막 세션 뒤에는 넣지 않음 → i < num_sessions 조건)
-        # cycle 뒤의 짧은 휴식은 이미 위에서 추가했으므로 긴 휴식만 추가
         if include_long_break and i == cycle_sessions and i < num_sessions:
             schedule.append(
                 ScheduleItem(
@@ -175,3 +186,293 @@ def build_schedule(
             )
 
     return schedule
+
+
+def calculate_total_minutes(
+    study_type: StudyType,
+    study_minutes: int,
+    short_break_minutes: int,
+    num_sessions: int,
+    include_long_break: bool,
+) -> int:
+    total = (study_minutes + short_break_minutes) * num_sessions
+    cycle_sessions = BASE_RULES[study_type]["cycle_sessions"]
+
+    # 긴 휴식은 사이클을 초과하는 세션이 있을 때만 1번 추가
+    if include_long_break and num_sessions > cycle_sessions:
+        total += LONG_BREAK_MINUTES
+
+    return total
+
+
+def can_include_long_break(study_type: StudyType, num_sessions: int) -> bool:
+    cycle_sessions = BASE_RULES[study_type]["cycle_sessions"]
+    return num_sessions > cycle_sessions
+
+
+def fit_type_from_difference(diff: int) -> RecommendationFit:
+    if diff == 0:
+        return RecommendationFit.exact
+    if diff < 0:
+        return RecommendationFit.under
+    return RecommendationFit.over
+
+
+def title_from_fit(fit_type: RecommendationFit) -> str:
+    return {
+        RecommendationFit.exact: "설정 시간에 딱 맞는 추천",
+        RecommendationFit.under: "조금 짧지만 부담이 적은 추천",
+        RecommendationFit.over: "조금 길지만 흐름이 좋은 추천",
+    }[fit_type]
+
+
+def make_candidate_recommendations(study_type: StudyType, target_minutes: int) -> list[PlanRecommendation]:
+    """
+    RECOMMENDATION_PATTERNS의 모든 패턴 × 세션 수 1~13 × 긴휴식 포함/미포함
+    조합으로 후보 전체를 생성한다. 중복은 seen_signatures로 걸러낸다.
+    """
+    candidates: list[PlanRecommendation] = []
+    seen_signatures: set[tuple] = set()
+
+    for pattern in RECOMMENDATION_PATTERNS[study_type]:
+        study_minutes = pattern["study"]
+        short_break_minutes = pattern["break"]
+        pattern_label = pattern["label"]
+
+        for num_sessions in range(1, MAX_SESSIONS + 1):
+            # 긴 휴식 없는 버전
+            total_without_long = calculate_total_minutes(
+                study_type=study_type,
+                study_minutes=study_minutes,
+                short_break_minutes=short_break_minutes,
+                num_sessions=num_sessions,
+                include_long_break=False,
+            )
+            diff_without_long = total_without_long - target_minutes
+            sig_without = (study_minutes, short_break_minutes, num_sessions, False, total_without_long)
+
+            if sig_without not in seen_signatures:
+                schedule = build_schedule(
+                    study_type=study_type,
+                    study_minutes=study_minutes,
+                    short_break_minutes=short_break_minutes,
+                    num_sessions=num_sessions,
+                    include_long_break=False,
+                )
+                candidates.append(
+                    PlanRecommendation(
+                        rank=0,
+                        fit_type=fit_type_from_difference(diff_without_long),
+                        title=title_from_fit(fit_type_from_difference(diff_without_long)),
+                        pattern_label=pattern_label,
+                        study_minutes=study_minutes,
+                        short_break_minutes=short_break_minutes,
+                        total_minutes=total_without_long,
+                        difference_minutes=diff_without_long,
+                        long_break_included=False,
+                        schedule=schedule,
+                    )
+                )
+                seen_signatures.add(sig_without)
+
+            # 긴 휴식 포함 버전
+            if can_include_long_break(study_type, num_sessions):
+                total_with_long = calculate_total_minutes(
+                    study_type=study_type,
+                    study_minutes=study_minutes,
+                    short_break_minutes=short_break_minutes,
+                    num_sessions=num_sessions,
+                    include_long_break=True,
+                )
+                diff_with_long = total_with_long - target_minutes
+                sig_with = (study_minutes, short_break_minutes, num_sessions, True, total_with_long)
+
+                if sig_with not in seen_signatures:
+                    schedule = build_schedule(
+                        study_type=study_type,
+                        study_minutes=study_minutes,
+                        short_break_minutes=short_break_minutes,
+                        num_sessions=num_sessions,
+                        include_long_break=True,
+                    )
+                    candidates.append(
+                        PlanRecommendation(
+                            rank=0,
+                            fit_type=fit_type_from_difference(diff_with_long),
+                            title=title_from_fit(fit_type_from_difference(diff_with_long)),
+                            pattern_label=pattern_label,
+                            study_minutes=study_minutes,
+                            short_break_minutes=short_break_minutes,
+                            total_minutes=total_with_long,
+                            difference_minutes=diff_with_long,
+                            long_break_included=True,
+                            schedule=schedule,
+                        )
+                    )
+                    seen_signatures.add(sig_with)
+
+    return candidates
+
+
+def is_one_recommendation_case(study_type: StudyType, target_minutes: int) -> PlanRecommendation | None:
+    """
+    목표 시간이 기본 리듬으로 정확히 나누어 떨어지는 경우 바로 반환 (early return)
+
+    경우 A: 기본 세션 반복만으로 딱 맞음
+    경우 B: 기본 사이클 + 긴 휴식 + 추가 세션으로 딱 맞음
+    """
+    rule = BASE_RULES[study_type]
+    study_minutes = rule["study_minutes"]
+    short_break_minutes = rule["short_break_minutes"]
+    cycle_sessions = rule["cycle_sessions"]
+
+    session_total = study_minutes + short_break_minutes
+
+    # 경우 A
+    if target_minutes % session_total == 0:
+        num_sessions = target_minutes // session_total
+        if 1 <= num_sessions <= MAX_SESSIONS:
+            schedule = build_schedule(
+                study_type=study_type,
+                study_minutes=study_minutes,
+                short_break_minutes=short_break_minutes,
+                num_sessions=num_sessions,
+                include_long_break=False,
+            )
+            return PlanRecommendation(
+                rank=1,
+                fit_type=RecommendationFit.exact,
+                title=title_from_fit(RecommendationFit.exact),
+                pattern_label="기본 리듬",
+                study_minutes=study_minutes,
+                short_break_minutes=short_break_minutes,
+                total_minutes=target_minutes,
+                difference_minutes=0,
+                long_break_included=False,
+                schedule=schedule,
+            )
+
+    # 경우 B
+    cycle_total_with_long = (session_total * cycle_sessions) + LONG_BREAK_MINUTES
+    remaining = target_minutes - cycle_total_with_long
+
+    if remaining >= 0 and remaining % session_total == 0:
+        extra_sessions = remaining // session_total
+        num_sessions = cycle_sessions + extra_sessions
+
+        if cycle_sessions < num_sessions <= MAX_SESSIONS:
+            schedule = build_schedule(
+                study_type=study_type,
+                study_minutes=study_minutes,
+                short_break_minutes=short_break_minutes,
+                num_sessions=num_sessions,
+                include_long_break=True,
+            )
+            return PlanRecommendation(
+                rank=1,
+                fit_type=RecommendationFit.exact,
+                title=title_from_fit(RecommendationFit.exact),
+                pattern_label="기본 리듬",
+                study_minutes=study_minutes,
+                short_break_minutes=short_break_minutes,
+                total_minutes=target_minutes,
+                difference_minutes=0,
+                long_break_included=True,
+                schedule=schedule,
+            )
+
+    return None
+
+
+# -----------------------------
+# Core Logic
+# -----------------------------
+def generate_study_plan_options(study_type: StudyType, total_study_minutes: int) -> StudyPlanResponse:
+    rule = get_base_rule(study_type)
+    base_rule = BaseRule(
+        study_minutes=rule["study_minutes"],
+        short_break_minutes=rule["short_break_minutes"],
+        session_total_minutes=rule["study_minutes"] + rule["short_break_minutes"],
+        cycle_sessions=rule["cycle_sessions"],
+        long_break_minutes=LONG_BREAK_MINUTES,
+    )
+
+    # 기본 리듬으로 딱 떨어지면 바로 반환
+    exact_one = is_one_recommendation_case(study_type, total_study_minutes)
+    if exact_one is not None:
+        return StudyPlanResponse(
+            study_type=study_type,
+            total_study_minutes=total_study_minutes,
+            base_rule=base_rule,
+            recommendations=[exact_one],
+            summary=f"{rule['label']} 기본 리듬으로 자연스럽게 맞는 추천 1개를 제공했어요.",
+        )
+
+    candidates = make_candidate_recommendations(study_type, total_study_minutes)
+
+    exact_candidates = [c for c in candidates if c.difference_minutes == 0]
+    under_candidates = [c for c in candidates if 0 > c.difference_minutes >= -UNDER_LIMIT]
+    over_candidates = [c for c in candidates if 0 < c.difference_minutes <= OVER_LIMIT]
+
+    # 각 그룹 내 정렬
+    exact_candidates.sort(key=lambda x: (x.total_minutes, x.study_minutes))
+    under_candidates.sort(key=lambda x: (abs(x.difference_minutes), x.total_minutes))
+    over_candidates.sort(key=lambda x: (x.difference_minutes, x.total_minutes))
+
+    recommendations: list[PlanRecommendation] = []
+    used_signatures: set[tuple] = set()
+
+    # 각 그룹에서 최대 1개씩 선택 → 최대 3개 반환
+    for group in (exact_candidates[:1], under_candidates[:1], over_candidates[:1]):
+        for item in group:
+            sig = (
+                item.study_minutes,
+                item.short_break_minutes,
+                item.total_minutes,
+                item.long_break_included,
+            )
+            if sig not in used_signatures:
+                recommendations.append(item)
+                used_signatures.add(sig)
+
+    for idx, recommendation in enumerate(recommendations, start=1):
+        recommendation.rank = idx
+
+    summary = f"{rule['label']} 공부에 맞춰 딱 맞는 안, 조금 짧은 안, 조금 긴 안 중 가능한 추천을 골라드렸어요."
+
+    return StudyPlanResponse(
+        study_type=study_type,
+        total_study_minutes=total_study_minutes,
+        base_rule=base_rule,
+        recommendations=recommendations,
+        summary=summary,
+    )
+
+
+# -----------------------------
+# Router endpoints
+# -----------------------------
+@router.get("", summary="AI 서비스 상태 확인")
+def ai_root() -> dict[str, str]:
+    return {"message": "AI service is running"}
+
+
+@router.post("/study-plan-options", response_model=StudyPlanResponse, summary="포모도로 플랜 추천 생성")
+def create_study_plan(request: StudyPlanRequest) -> StudyPlanResponse:
+    return generate_study_plan_options(
+        study_type=request.study_type,
+        total_study_minutes=request.total_study_minutes,
+    )
+
+
+# -----------------------------
+# Standalone app (로컬 테스트용)
+# uvicorn ai_service:app --reload
+# -----------------------------
+app = FastAPI(title="Pomodoro AI Service", version="1.0.0")
+app.include_router(router)
+
+
+@app.get("/")
+def root() -> dict[str, str]:
+    return {"message": "Pomodoro AI Service"}
