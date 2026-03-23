@@ -1,0 +1,10 @@
+requirements.txt
+.env
+venv/
+F/
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
