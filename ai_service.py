@@ -1,9 +1,14 @@
 from __future__ import annotations
-
 from enum import Enum
-
 from fastapi import APIRouter, FastAPI
 from pydantic import BaseModel, Field
+import os
+from typing import Optional
+from google import genai
+from google.genai import types
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 router = APIRouter(prefix="/ai", tags=["ai"])
@@ -135,7 +140,10 @@ class StudyPlanResponse(BaseModel):
     base_rule: BaseRule
     recommendations: list[PlanRecommendation]
     summary: str
+    ai_message: str
 
+class GreetingResponse(BaseModel):
+    message: str
 
 # -----------------------------
 # Helper Functions
@@ -220,9 +228,9 @@ def fit_type_from_difference(diff: int) -> RecommendationFit:
 
 def title_from_fit(fit_type: RecommendationFit) -> str:
     return {
-        RecommendationFit.exact: "설정 시간에 딱 맞는 추천",
-        RecommendationFit.under: "조금 짧지만 부담이 적은 추천",
-        RecommendationFit.over: "조금 길지만 흐름이 좋은 추천",
+        RecommendationFit.exact: "딱 맞는 공부 흐름이에요",
+        RecommendationFit.under: "조금 여유 있는 공부 흐름이에요",
+        RecommendationFit.over: "조금 길지만 집중하기 좋은 흐름이에요",
     }[fit_type]
 
 
@@ -387,6 +395,8 @@ def is_one_recommendation_case(study_type: StudyType, target_minutes: int) -> Pl
 # -----------------------------
 # Core Logic
 # -----------------------------
+
+# 기본 리듬으로 딱 떨어지면 바로 반환
 def generate_study_plan_options(study_type: StudyType, total_study_minutes: int) -> StudyPlanResponse:
     rule = get_base_rule(study_type)
     base_rule = BaseRule(
@@ -397,15 +407,22 @@ def generate_study_plan_options(study_type: StudyType, total_study_minutes: int)
         long_break_minutes=LONG_BREAK_MINUTES,
     )
 
-    # 기본 리듬으로 딱 떨어지면 바로 반환
     exact_one = is_one_recommendation_case(study_type, total_study_minutes)
     if exact_one is not None:
+        recommendations = [exact_one]
+        summary = f"{rule['label']} 공부 시간에 딱 맞는 구성이라 하나만 추천드렸어요."
+        ai_message = generate_ai_message(
+            study_type=study_type,
+            total_study_minutes=total_study_minutes,
+            recommendations=recommendations,
+        )
         return StudyPlanResponse(
             study_type=study_type,
             total_study_minutes=total_study_minutes,
             base_rule=base_rule,
-            recommendations=[exact_one],
-            summary=f"{rule['label']} 기본 리듬으로 자연스럽게 맞는 추천 1개를 제공했어요.",
+            recommendations=recommendations,
+            summary=summary,
+            ai_message=ai_message,
         )
 
     candidates = make_candidate_recommendations(study_type, total_study_minutes)
@@ -414,7 +431,6 @@ def generate_study_plan_options(study_type: StudyType, total_study_minutes: int)
     under_candidates = [c for c in candidates if 0 > c.difference_minutes >= -UNDER_LIMIT]
     over_candidates = [c for c in candidates if 0 < c.difference_minutes <= OVER_LIMIT]
 
-    # 각 그룹 내 정렬
     exact_candidates.sort(key=lambda x: (x.total_minutes, x.study_minutes))
     under_candidates.sort(key=lambda x: (abs(x.difference_minutes), x.total_minutes))
     over_candidates.sort(key=lambda x: (x.difference_minutes, x.total_minutes))
@@ -422,7 +438,6 @@ def generate_study_plan_options(study_type: StudyType, total_study_minutes: int)
     recommendations: list[PlanRecommendation] = []
     used_signatures: set[tuple] = set()
 
-    # 각 그룹에서 최대 1개씩 선택 → 최대 3개 반환
     for group in (exact_candidates[:1], under_candidates[:1], over_candidates[:1]):
         for item in group:
             sig = (
@@ -438,7 +453,12 @@ def generate_study_plan_options(study_type: StudyType, total_study_minutes: int)
     for idx, recommendation in enumerate(recommendations, start=1):
         recommendation.rank = idx
 
-    summary = f"{rule['label']} 공부에 맞춰 딱 맞는 안, 조금 짧은 안, 조금 긴 안 중 가능한 추천을 골라드렸어요."
+    summary = f"{rule['label']} 공부 시간에 맞는 구성을 비교해 보세요."
+    ai_message = generate_ai_message(
+        study_type=study_type,
+        total_study_minutes=total_study_minutes,
+        recommendations=recommendations,
+    )
 
     return StudyPlanResponse(
         study_type=study_type,
@@ -446,7 +466,213 @@ def generate_study_plan_options(study_type: StudyType, total_study_minutes: int)
         base_rule=base_rule,
         recommendations=recommendations,
         summary=summary,
+        ai_message=ai_message,
     )
+
+
+def _format_recommendations_for_prompt(recommendations: list[PlanRecommendation]) -> str:
+    lines = []
+
+    for rec in recommendations:
+        lines.append(
+            (
+                f"- rank={rec.rank}, "
+                f"fit_type={rec.fit_type.value}, "
+                f"title={rec.title}, "
+                f"pattern_label={rec.pattern_label}, "
+                f"study={rec.study_minutes}분, "
+                f"short_break={rec.short_break_minutes}분, "
+                f"total={rec.total_minutes}분, "
+                f"difference={rec.difference_minutes}분, "
+                f"long_break_included={rec.long_break_included}"
+            )
+        )
+
+    return "\n".join(lines)
+
+# 토티 인사말
+def generate_greeting_message(
+    model_name: str = "gemini-2.5-flash",
+) -> str:
+    api_key = os.getenv("GEMINI_API_KEY")
+    print(f"[greeting 1] api_key 존재: {bool(api_key)}")  # 👈
+    if not api_key:
+        return (
+            "안녕하세요, 저는 공부 리듬을 함께 맞춰주는 토티예요. "
+            "오늘 공부 시간에 맞는 타이머 구성을 편하게 추천해드릴게요."
+        )
+
+    system_instruction = (
+        "당신은 포모도로 학습 도우미 AI '토티'입니다. "
+        "항상 한국어로 답하세요. "
+        "말투는 부드럽고 친절하며, 짧고 자연스럽게 유지하세요. "
+        "너무 귀엽거나 유치한 표현은 피하고, 서비스 첫 화면에 어울리는 인사말을 작성하세요. "
+        "2~3문장으로 작성하세요. "
+        "사용자 입력과 무관한 일반 인사말만 작성하세요. "
+        "공부 시작을 부담 없게 도와주는 느낌을 주세요. "
+        "이모티콘과 과한 감탄사는 사용하지 마세요."
+    )
+
+    user_prompt = (
+        "사용자에게 보여줄 첫 인사말을 작성하세요. "
+        "토티가 공부 리듬을 함께 맞춰주는 서비스라는 점이 자연스럽게 드러나면 좋습니다."
+        "인사말의 예시 - 안녕하세요, 저는 공부 리듬을 함께 맞춰주는 토티예요. 오늘 공부 시간에 맞는 타이머 구성을 편하게 추천해드릴게요."
+    )
+
+    try:
+        client = genai.Client(api_key=api_key)
+        print("[greeting 2] client 생성 성공")  # 👈
+
+        response = client.models.generate_content(
+            model=model_name,
+            contents=user_prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=system_instruction,
+                temperature=0.8,
+                max_output_tokens=200,
+                thinking_config=types.ThinkingConfig(thinking_budget=0),
+            ),
+        )
+        print(f"[greeting 3] response 받음: {repr(response.text)}")  # 👈
+
+        text = (response.text or "").strip()
+        print(f"[greeting 전체 텍스트] {repr(text)}")  # 👈 추가
+        if text:
+            return text
+
+    except Exception as e:
+        print(f"[greeting 에러] {e}")  # 👈
+        # pass
+
+    return (
+        "안녕하세요, 저는 공부 리듬을 함께 맞춰주는 토티예요. "
+        "오늘 공부 시간에 맞는 타이머 구성을 편하게 추천해드릴게요."
+    )
+
+
+def generate_ai_message(
+    study_type: StudyType,
+    total_study_minutes: int,
+    recommendations: list[PlanRecommendation],
+    model_name: str = "gemini-2.5-flash",
+) -> str:
+    """
+    규칙 기반 추천 결과를 바탕으로 Gemini가 사용자용 설명/격려 메시지를 생성한다.
+    실패하면 규칙 기반 fallback 메시지를 반환한다.
+    """
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        return build_fallback_ai_message(
+            study_type=study_type,
+            total_study_minutes=total_study_minutes,
+            recommendations=recommendations,
+        )
+
+    if not recommendations:
+        return "추천을 준비하고 있어요. 잠시 후 다시 시도해 주세요."
+
+    study_type_label = BASE_RULES[study_type]["label"]
+    recommendation_text = _format_recommendations_for_prompt(recommendations)
+
+    system_instruction = (
+    "당신은 포모도로 학습 도우미 AI '토티'입니다. "
+    "토티는 사용자가 공부를 부담 없이 시작할 수 있도록 도와주는, 친근하고 다정한 학습 메이트입니다. "
+    "항상 한국어로 답하세요. "
+    "말투는 부드럽고 친절하며, 짧고 자연스럽게 유지하세요. "
+    "너무 귀엽거나 과장된 표현은 피하고, 실제 서비스 안내문처럼 편안한 톤을 사용하세요. "
+    "사용자와 함께 공부 리듬을 맞춰주는 느낌으로 말하세요. "
+    "답변은 3~5문장으로 구성하세요. "
+    "가끔 짧은 공감 표현(예: '이 정도면 시작하기 딱 좋아요')을 자연스럽게 포함하세요. "
+    "불필요한 감탄사나 이모티콘은 사용하지 마세요. "
+    "반드시 아래 규칙을 지키세요:\n"
+    "1. 추천 결과를 왜 제안했는지 쉽게 설명할 것\n"
+    "2. 가장 적합한 추천 1개를 자연스럽게 강조할 것\n"
+    "3. 사용자가 부담 없이 시작할 수 있도록 짧고 다정한 격려 문장 1개를 포함할 것\n"
+    "4. 존재하지 않는 시간이나 일정을 지어내지 말 것\n"
+    "5. recommendations에 있는 정보만 사용해서 설명할 것\n"
+    "6. 토티답게 따뜻하고 가볍지만, 유치하지 않은 톤을 유지할 것"
+)
+
+    user_prompt = f"""
+
+사용자 총 학습 시간: {total_study_minutes}분
+
+
+추천 목록:
+{recommendation_text}
+
+위 추천 목록을 바탕으로 사용자에게 보여줄 안내 메시지를 작성하세요.
+
+출력 조건:
+- 한국어
+- 3~5문장
+- 첫 문장에서는 전체 추천 방향을 설명
+- 둘째 문장에서는 가장 적합한 추천 1개를 자연스럽게 강조
+- 셋째 문장 이후에는 휴식 리듬 또는 집중 흐름의 장점을 설명
+- 마지막 문장에는 짧은 격려 추가
+- 마크다운 금지
+- 번호 목록 금지
+""".strip()
+
+    try:
+        client = genai.Client(api_key=api_key)
+
+        response = client.models.generate_content(
+            model=model_name,
+            contents=user_prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=system_instruction,
+                temperature=0.7,
+                max_output_tokens=220,
+                thinking_config=types.ThinkingConfig(thinking_budget=0),
+            ),
+        )
+
+        text = (response.text or "").strip()
+        if text:
+            return text
+
+    except Exception:
+        pass
+
+    return build_fallback_ai_message(
+        study_type=study_type,
+        total_study_minutes=total_study_minutes,
+        recommendations=recommendations,
+    )    
+
+
+def build_fallback_ai_message(
+    study_type: StudyType,
+    total_study_minutes: int,
+    recommendations: list[PlanRecommendation],
+) -> str:
+    """
+    Gemini 호출 실패 시 사용할 규칙 기반 메시지
+    """
+    label = BASE_RULES[study_type]["label"]
+
+    if not recommendations:
+        return f"{label} 공부에 맞는 학습 플랜을 다시 계산해 보세요."
+
+    top = recommendations[0]
+
+    if top.fit_type.value == "exact":
+        first_sentence = "지금 시간에 딱 맞는 구성이에요."
+    elif top.fit_type.value == "under":
+        first_sentence = "부담이 적은 구성이에요."
+    elif top.fit_type.value == "over":
+        first_sentence = "조금 길어도 집중하기 좋은 구성이에요."
+    else:
+        first_sentence = "균형 있게 공부하기 좋은 구성이에요."
+
+    return (
+        f"{first_sentence} "
+        f"{top.study_minutes}분 공부, {top.short_break_minutes}분 휴식으로 진행해 보세요. "
+        f"부담 없이 한 세션씩 해보세요."
+    )
+
+
 
 
 # -----------------------------
@@ -455,6 +681,10 @@ def generate_study_plan_options(study_type: StudyType, total_study_minutes: int)
 @router.get("", summary="AI 서비스 상태 확인")
 def ai_root() -> dict[str, str]:
     return {"message": "AI service is running"}
+
+@router.get("/greeting", response_model=GreetingResponse, summary="토티 인사말")
+def greeting() -> GreetingResponse:
+    return GreetingResponse(message=generate_greeting_message())
 
 
 @router.post("/study-plan-options", response_model=StudyPlanResponse, summary="포모도로 플랜 추천 생성")
@@ -469,7 +699,18 @@ def create_study_plan(request: StudyPlanRequest) -> StudyPlanResponse:
 # Standalone app (로컬 테스트용)
 # uvicorn ai_service:app --reload
 # -----------------------------
+from fastapi.middleware.cors import CORSMiddleware
+
 app = FastAPI(title="Pomodoro AI Service", version="1.0.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # 테스트용. 나중에는 프론트 주소만 허용하는 것이 좋음
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.include_router(router)
 
 
