@@ -77,10 +77,6 @@
       margin-right: 6px;
       margin-bottom: 8px;
     }
-    ul {
-      padding-left: 20px;
-      margin-bottom: 0;
-    }
     .json-box {
       background: #111827;
       color: #f9fafb;
@@ -92,12 +88,86 @@
       font-size: 14px;
       line-height: 1.5;
     }
+    .schedule-wrap {
+      margin-top: 14px;
+      padding: 14px;
+      border-radius: 12px;
+      background: #f8fafc;
+      border: 1px solid #e5e7eb;
+    }
+    .timeline {
+      display: flex;
+      width: 100%;
+      min-height: 42px;
+      border-radius: 10px;
+      overflow: hidden;
+      background: #e5e7eb;
+    }
+    .segment {
+      position: relative;
+      min-width: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 6px 4px;
+      font-size: 12px;
+      font-weight: 700;
+      text-align: center;
+      border-right: 1px solid rgba(255,255,255,0.85);
+      word-break: keep-all;
+    }
+    .segment:last-child {
+      border-right: none;
+    }
+    .segment.study {
+      background: #2563eb;
+      color: #fff;
+    }
+    .segment.short_break {
+      background: #93c5fd;
+      color: #0f172a;
+    }
+    .segment.long_break {
+      background: #fde68a;
+      color: #422006;
+    }
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 14px;
+      margin-top: 12px;
+      font-size: 13px;
+      color: #475569;
+    }
+    .legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .legend-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 999px;
+      display: inline-block;
+    }
+    .legend-dot.study { background: #2563eb; }
+    .legend-dot.short_break { background: #93c5fd; }
+    .legend-dot.long_break { background: #fde68a; }
+    .bar-note {
+      margin-top: 10px;
+      font-size: 13px;
+      color: #64748b;
+    }
   </style>
 </head>
 <body>
   <div class="container">
     <div class="card">
-      <h1>Pomodoro AI 브라우저 테스트</h1>
+      <h1>TOTI 브라우저 테스트</h1>
+      <div id="greetingBox" style="margin: 16px 0 20px; padding: 16px; border-radius: 14px; background: #f3f7ff; border: 1px solid #dbe7ff;">
+        <strong>토티 인사말</strong>
+        <p id="greetingText" class="muted" style="margin: 10px 0 0;">토티가 인사를 준비하고 있어요.</p>
+      </div>
       <p class="muted">FastAPI의 <code>/ai/study-plan-options</code> 엔드포인트를 브라우저에서 시험하는 페이지입니다.</p>
 
       <div class="grid">
@@ -168,6 +238,7 @@
     const studyTypeInput = document.getElementById("studyType");
     const totalMinutesInput = document.getElementById("totalMinutes");
     const statusEl = document.getElementById("status");
+    const greetingTextEl = document.getElementById("greetingText");
     const resultSummaryEl = document.getElementById("resultSummary");
     const recommendationsEl = document.getElementById("recommendations");
     const rawJsonEl = document.getElementById("rawJson");
@@ -188,6 +259,24 @@
       practice: "실습형"
     };
 
+    function getSegmentLabel(item) {
+      if (item.type === "study") return `${item.minutes}분`;
+      if (item.type === "short_break") return `휴식 ${item.minutes}분`;
+      if (item.type === "long_break") return `긴휴식 ${item.minutes}분`;
+      return `${item.minutes}분`;
+    }
+
+    function renderTimeline(schedule) {
+      return schedule.map((item) => {
+        const flexValue = Math.max(item.minutes, 1);
+        return `
+          <div class="segment ${escapeHtml(item.type)}" style="flex: ${flexValue} 1 0%;">
+            ${escapeHtml(getSegmentLabel(item))}
+          </div>
+        `;
+      }).join("");
+    }
+
     function renderRecommendations(data) {
       if (!data.recommendations || data.recommendations.length === 0) {
         recommendationsEl.innerHTML = "추천 결과가 없습니다.";
@@ -195,32 +284,59 @@
       }
 
       const html = data.recommendations.map((rec) => {
-        const scheduleItems = rec.schedule.map((item) => {
-          return `<li>${item.order}. ${escapeHtml(item.label)} / ${escapeHtml(item.type)} / ${item.minutes}분</li>`;
-        }).join("");
+        const timeline = renderTimeline(rec.schedule || []);
 
         return `
           <div class="recommendation">
             <h3>${rec.rank}순위 - ${escapeHtml(rec.title)}</h3>
             <div>
-              <span class="badge">fit: ${escapeHtml(rec.fit_type)}</span>
               <span class="badge">패턴: ${escapeHtml(rec.pattern_label)}</span>
               <span class="badge">총 ${rec.total_minutes}분</span>
               <span class="badge">차이 ${rec.difference_minutes}분</span>
               <span class="badge">긴휴식 ${rec.long_break_included ? "포함" : "미포함"}</span>
             </div>
-            <p>
-              공부 ${rec.study_minutes}분 / 짧은 휴식 ${rec.short_break_minutes}분
-            </p>
-            <details>
-              <summary>세부 스케줄 보기</summary>
-              <ul>${scheduleItems}</ul>
-            </details>
+            <p>1뽀모 : 공부 ${rec.study_minutes}분 / 짧은 휴식 ${rec.short_break_minutes}분</p>
+
+            <div class="schedule-wrap">
+              <div class="timeline">
+                ${timeline}
+              </div>
+              <div class="legend">
+                <span class="legend-item"><span class="legend-dot study"></span>공부</span>
+                <span class="legend-item"><span class="legend-dot short_break"></span>짧은 휴식</span>
+                <span class="legend-item"><span class="legend-dot long_break"></span>긴 휴식</span>
+              </div>
+              <div class="bar-note">막대 길이는 각 세션 시간 비율을 나타냅니다.</div>
+            </div>
           </div>
         `;
       }).join("");
 
       recommendationsEl.innerHTML = html;
+    }
+
+    async function loadGreeting() {
+      const apiBase = apiBaseInput.value.trim().replace(/\/$/, "");
+
+      greetingTextEl.textContent = "토티가 인사를 준비하고 있어요.";
+
+      if (!apiBase) {
+        greetingTextEl.textContent = "안녕하세요, 저는 공부 리듬을 함께 맞춰주는 토티예요.";
+        return;
+      }
+
+      try {
+        const response = await fetch(`${apiBase}/ai/greeting`);
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+        greetingTextEl.textContent = data.message || "안녕하세요, 저는 공부 리듬을 함께 맞춰주는 토티예요.";
+      } catch (error) {
+        greetingTextEl.textContent = "안녕하세요, 저는 공부 리듬을 함께 맞춰주는 토티예요. 오늘 공부 시간에 맞는 타이머 구성을 편하게 추천해드릴게요.";
+      }
     }
 
     async function requestStudyPlan() {
@@ -285,6 +401,8 @@
     }
 
     submitBtn.addEventListener("click", requestStudyPlan);
+    apiBaseInput.addEventListener("change", loadGreeting);
+    window.addEventListener("DOMContentLoaded", loadGreeting);
   </script>
 </body>
 </html>

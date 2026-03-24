@@ -6,6 +6,10 @@ import os
 from typing import Optional
 from google import genai
 from google.genai import types
+from dotenv import load_dotenv
+
+load_dotenv()
+
 
 router = APIRouter(prefix="/ai", tags=["ai"])
 
@@ -138,6 +142,8 @@ class StudyPlanResponse(BaseModel):
     summary: str
     ai_message: str
 
+class GreetingResponse(BaseModel):
+    message: str
 
 # -----------------------------
 # Helper Functions
@@ -484,12 +490,71 @@ def _format_recommendations_for_prompt(recommendations: list[PlanRecommendation]
 
     return "\n".join(lines)
 
+# 토티 인사말
+def generate_greeting_message(
+    model_name: str = "gemini-2.5-flash",
+) -> str:
+    api_key = os.getenv("GEMINI_API_KEY")
+    print(f"[greeting 1] api_key 존재: {bool(api_key)}")  # 👈
+    if not api_key:
+        return (
+            "안녕하세요, 저는 공부 리듬을 함께 맞춰주는 토티예요. "
+            "오늘 공부 시간에 맞는 타이머 구성을 편하게 추천해드릴게요."
+        )
+
+    system_instruction = (
+        "당신은 포모도로 학습 도우미 AI '토티'입니다. "
+        "항상 한국어로 답하세요. "
+        "말투는 부드럽고 친절하며, 짧고 자연스럽게 유지하세요. "
+        "너무 귀엽거나 유치한 표현은 피하고, 서비스 첫 화면에 어울리는 인사말을 작성하세요. "
+        "2~3문장으로 작성하세요. "
+        "사용자 입력과 무관한 일반 인사말만 작성하세요. "
+        "공부 시작을 부담 없게 도와주는 느낌을 주세요. "
+        "이모티콘과 과한 감탄사는 사용하지 마세요."
+    )
+
+    user_prompt = (
+        "사용자에게 보여줄 첫 인사말을 작성하세요. "
+        "토티가 공부 리듬을 함께 맞춰주는 서비스라는 점이 자연스럽게 드러나면 좋습니다."
+        "인사말의 예시 - 안녕하세요, 저는 공부 리듬을 함께 맞춰주는 토티예요. 오늘 공부 시간에 맞는 타이머 구성을 편하게 추천해드릴게요."
+    )
+
+    try:
+        client = genai.Client(api_key=api_key)
+        print("[greeting 2] client 생성 성공")  # 👈
+
+        response = client.models.generate_content(
+            model=model_name,
+            contents=user_prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=system_instruction,
+                temperature=0.8,
+                max_output_tokens=200,
+                thinking_config=types.ThinkingConfig(thinking_budget=0),
+            ),
+        )
+        print(f"[greeting 3] response 받음: {repr(response.text)}")  # 👈
+
+        text = (response.text or "").strip()
+        print(f"[greeting 전체 텍스트] {repr(text)}")  # 👈 추가
+        if text:
+            return text
+
+    except Exception as e:
+        print(f"[greeting 에러] {e}")  # 👈
+        # pass
+
+    return (
+        "안녕하세요, 저는 공부 리듬을 함께 맞춰주는 토티예요. "
+        "오늘 공부 시간에 맞는 타이머 구성을 편하게 추천해드릴게요."
+    )
+
 
 def generate_ai_message(
     study_type: StudyType,
     total_study_minutes: int,
     recommendations: list[PlanRecommendation],
-    model_name: str = "gemini-3-flash-preview",
+    model_name: str = "gemini-2.5-flash",
 ) -> str:
     """
     규칙 기반 추천 결과를 바탕으로 Gemini가 사용자용 설명/격려 메시지를 생성한다.
@@ -529,8 +594,9 @@ def generate_ai_message(
 )
 
     user_prompt = f"""
-사용자 공부 유형: {study_type_label}
+
 사용자 총 학습 시간: {total_study_minutes}분
+
 
 추천 목록:
 {recommendation_text}
@@ -558,7 +624,7 @@ def generate_ai_message(
                 system_instruction=system_instruction,
                 temperature=0.7,
                 max_output_tokens=220,
-                thinking_config=types.ThinkingConfig(thinking_level="low"),
+                thinking_config=types.ThinkingConfig(thinking_budget=0),
             ),
         )
 
@@ -615,6 +681,10 @@ def build_fallback_ai_message(
 @router.get("", summary="AI 서비스 상태 확인")
 def ai_root() -> dict[str, str]:
     return {"message": "AI service is running"}
+
+@router.get("/greeting", response_model=GreetingResponse, summary="토티 인사말")
+def greeting() -> GreetingResponse:
+    return GreetingResponse(message=generate_greeting_message())
 
 
 @router.post("/study-plan-options", response_model=StudyPlanResponse, summary="포모도로 플랜 추천 생성")
