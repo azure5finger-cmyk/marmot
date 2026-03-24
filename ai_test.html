@@ -117,7 +117,7 @@
         </div>
 
         <div>
-          <label for="totalMinutes">또띠 공부 시간</label>
+          <label for="totalMinutes">목표 공부 시간</label>
           <select id="totalMinutes">
             <option value="30">30분</option>
             <option value="60"  selected>1시간</option>
@@ -140,14 +140,14 @@
       </div>
 
       <div style="margin-top:16px;">
-        <button id="submitBtn">또띠에게 타이머 추천 받기</button>
+        <button id="submitBtn">토티에게 타이머 추천 받기</button>
       </div>
 
       <div id="status" style="margin-top:16px;"></div>
     </div>
 
     <div class="card">
-      <h2>또띠 요약</h2>
+      <h2>토티 요약</h2>
       <div id="resultSummary" class="muted">아직 요청하지 않았습니다.</div>
     </div>
 
@@ -270,9 +270,9 @@
         statusEl.innerHTML = '<div class="success">요청 성공</div>';
         resultSummaryEl.innerHTML = `
           <p><strong>공부 유형:</strong> ${studyTypeMap[data.study_type] || data.study_type}</p>
-          <p><strong>또띠 공부 시간:</strong> ${data.total_study_minutes}분</p>
+          <p><strong>토티 공부 시간:</strong> ${data.total_study_minutes}분</p>
           <p><strong>타이머 추천:</strong> ${escapeHtml(data.summary)}</p>
-          <p><strong>또띠 메시지:</strong> ${escapeHtml(data.ai_message)}</p>
+          <p><strong>토티 메시지:</strong> ${escapeHtml(data.ai_message)}</p>
           <p><strong>기본 규칙:</strong> 공부 ${data.base_rule.study_minutes}분 / 짧은 휴식 ${data.base_rule.short_break_minutes}분 / 긴 휴식 ${data.base_rule.long_break_minutes}분 / 사이클 ${data.base_rule.cycle_sessions}세션</p>
         `;
 

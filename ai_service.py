@@ -222,9 +222,9 @@ def fit_type_from_difference(diff: int) -> RecommendationFit:
 
 def title_from_fit(fit_type: RecommendationFit) -> str:
     return {
-        RecommendationFit.exact: "설정 시간에 딱 맞는 추천",
-        RecommendationFit.under: "조금 짧지만 부담이 적은 추천",
-        RecommendationFit.over: "조금 길지만 흐름이 좋은 추천",
+        RecommendationFit.exact: "딱 맞는 공부 흐름이에요",
+        RecommendationFit.under: "조금 여유 있는 공부 흐름이에요",
+        RecommendationFit.over: "조금 길지만 집중하기 좋은 흐름이에요",
     }[fit_type]
 
 
@@ -404,7 +404,7 @@ def generate_study_plan_options(study_type: StudyType, total_study_minutes: int)
     exact_one = is_one_recommendation_case(study_type, total_study_minutes)
     if exact_one is not None:
         recommendations = [exact_one]
-        summary = f"{rule['label']} 기본 리듬으로 자연스럽게 맞는 추천 1개를 제공했어요."
+        summary = f"{rule['label']} 공부 시간에 딱 맞는 구성이라 하나만 추천드렸어요."
         ai_message = generate_ai_message(
             study_type=study_type,
             total_study_minutes=total_study_minutes,
@@ -447,7 +447,7 @@ def generate_study_plan_options(study_type: StudyType, total_study_minutes: int)
     for idx, recommendation in enumerate(recommendations, start=1):
         recommendation.rank = idx
 
-    summary = f"{rule['label']} 공부에 맞춰 딱 맞는 안, 조금 짧은 안, 조금 긴 안 중 가능한 추천을 골라드렸어요."
+    summary = f"{rule['label']} 공부 시간에 맞는 구성을 비교해 보세요."
     ai_message = generate_ai_message(
         study_type=study_type,
         total_study_minutes=total_study_minutes,
@@ -504,23 +504,29 @@ def generate_ai_message(
         )
 
     if not recommendations:
-        return "추천 가능한 학습 플랜을 정리하는 중이에요. 잠시 후 다시 시도해 주세요."
+        return "추천을 준비하고 있어요. 잠시 후 다시 시도해 주세요."
 
     study_type_label = BASE_RULES[study_type]["label"]
     recommendation_text = _format_recommendations_for_prompt(recommendations)
 
     system_instruction = (
-        "당신은 포모도로 학습 도우미 AI입니다. "
-        "항상 한국어로 답하세요. "
-        "말투는 친절하고 간결하게 유지하세요. "
-        "사용자에게 너무 장황하지 않게 3~5문장으로 답하세요. "
-        "반드시 아래 규칙을 지키세요:\n"
-        "1. 추천 결과를 왜 제안했는지 쉽게 설명할 것\n"
-        "2. 가장 적합한 추천 1개를 자연스럽게 강조할 것\n"
-        "3. 부담을 줄이는 짧은 격려 문장 1개를 포함할 것\n"
-        "4. 존재하지 않는 시간이나 일정을 지어내지 말 것\n"
-        "5. recommendations에 있는 정보만 사용해서 설명할 것"
-    )
+    "당신은 포모도로 학습 도우미 AI '토티'입니다. "
+    "토티는 사용자가 공부를 부담 없이 시작할 수 있도록 도와주는, 친근하고 다정한 학습 메이트입니다. "
+    "항상 한국어로 답하세요. "
+    "말투는 부드럽고 친절하며, 짧고 자연스럽게 유지하세요. "
+    "너무 귀엽거나 과장된 표현은 피하고, 실제 서비스 안내문처럼 편안한 톤을 사용하세요. "
+    "사용자와 함께 공부 리듬을 맞춰주는 느낌으로 말하세요. "
+    "답변은 3~5문장으로 구성하세요. "
+    "가끔 짧은 공감 표현(예: '이 정도면 시작하기 딱 좋아요')을 자연스럽게 포함하세요. "
+    "불필요한 감탄사나 이모티콘은 사용하지 마세요. "
+    "반드시 아래 규칙을 지키세요:\n"
+    "1. 추천 결과를 왜 제안했는지 쉽게 설명할 것\n"
+    "2. 가장 적합한 추천 1개를 자연스럽게 강조할 것\n"
+    "3. 사용자가 부담 없이 시작할 수 있도록 짧고 다정한 격려 문장 1개를 포함할 것\n"
+    "4. 존재하지 않는 시간이나 일정을 지어내지 말 것\n"
+    "5. recommendations에 있는 정보만 사용해서 설명할 것\n"
+    "6. 토티답게 따뜻하고 가볍지만, 유치하지 않은 톤을 유지할 것"
+)
 
     user_prompt = f"""
 사용자 공부 유형: {study_type_label}
@@ -585,21 +591,20 @@ def build_fallback_ai_message(
 
     top = recommendations[0]
 
-    fit_text_map = {
-        "exact": "설정한 시간에 딱 맞는 흐름",
-        "under": "조금 짧지만 부담이 적은 흐름",
-        "over": "조금 길지만 집중 흐름이 좋은 구성",
-    }
-
-    fit_text = fit_text_map.get(top.fit_type.value, "균형 잡힌 학습 흐름")
+    if top.fit_type.value == "exact":
+        first_sentence = "지금 시간에 딱 맞는 구성이에요."
+    elif top.fit_type.value == "under":
+        first_sentence = "부담이 적은 구성이에요."
+    elif top.fit_type.value == "over":
+        first_sentence = "조금 길어도 집중하기 좋은 구성이에요."
+    else:
+        first_sentence = "균형 있게 공부하기 좋은 구성이에요."
 
     return (
-        f"{label} 공부에는 {fit_text}이 잘 맞아요. "
-        f"이번 추천에서는 {top.study_minutes}분 공부와 "
-        f"{top.short_break_minutes}분 휴식 리듬을 기준으로 구성했어요. "
-        f"너무 무리하지 말고 한 세션씩 차분히 해보세요."
+        f"{first_sentence} "
+        f"{top.study_minutes}분 공부, {top.short_break_minutes}분 휴식으로 진행해 보세요. "
+        f"부담 없이 한 세션씩 해보세요."
     )
-
 
 
 
