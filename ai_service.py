@@ -624,7 +624,18 @@ def create_study_plan(request: StudyPlanRequest) -> StudyPlanResponse:
 # Standalone app (로컬 테스트용)
 # uvicorn ai_service:app --reload
 # -----------------------------
+from fastapi.middleware.cors import CORSMiddleware
+
 app = FastAPI(title="Pomodoro AI Service", version="1.0.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # 테스트용. 나중에는 프론트 주소만 허용하는 것이 좋음
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.include_router(router)
 
 

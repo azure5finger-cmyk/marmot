@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pomodoro AI Test</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f7f7fb;
+      color: #222;
+    }
+    .container {
+      max-width: 960px;
+      margin: 40px auto;
+      padding: 24px;
+    }
+    .card {
+      background: #fff;
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+      margin-bottom: 20px;
+    }
+    h1, h2, h3 { margin-top: 0; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+    }
+    label {
+      display: block;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    select, input, button {
+      width: 100%;
+      padding: 12px;
+      border-radius: 10px;
+      border: 1px solid #ccc;
+      font-size: 16px;
+    }
+    button {
+      cursor: pointer;
+      border: none;
+      background: #1f6feb;
+      color: white;
+      font-weight: 700;
+    }
+    button:hover { opacity: 0.95; }
+    .muted { color: #666; }
+    .error {
+      color: #b00020;
+      font-weight: 700;
+      white-space: pre-wrap;
+    }
+    .success {
+      color: #146c2e;
+      font-weight: 700;
+    }
+    .recommendation {
+      border: 1px solid #e5e7eb;
+      border-radius: 14px;
+      padding: 16px;
+      margin-top: 16px;
+    }
+    .badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: #eef4ff;
+      color: #1f4ea3;
+      font-size: 13px;
+      font-weight: 700;
+      margin-right: 6px;
+      margin-bottom: 8px;
+    }
+    ul {
+      padding-left: 20px;
+      margin-bottom: 0;
+    }
+    .json-box {
+      background: #111827;
+      color: #f9fafb;
+      padding: 16px;
+      border-radius: 12px;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="card">
+      <h1>Pomodoro AI 브라우저 테스트</h1>
+      <p class="muted">FastAPI의 <code>/ai/study-plan-options</code> 엔드포인트를 브라우저에서 시험하는 페이지입니다.</p>
+
+      <div class="grid">
+        <div>
+          <label for="apiBase">API Base URL</label>
+          <input id="apiBase" type="text" value="http://127.0.0.1:8000" />
+        </div>
+
+        <div>
+          <label for="studyType">공부 유형</label>
+          <select id="studyType">
+            <option value="memorization">암기형 (반복 + 외우기)</option>
+            <option value="comprehension">이해형 (개념 이해 + 흐름 파악)</option>
+            <option value="problem_solving">문제풀이형 (손으로 풀기 + 오답 정리)</option>
+            <option value="practice">실습형 (이해 + 암기 MIXED)</option>
+          </select>
+        </div>
+
+        <div>
+          <label for="totalMinutes">또띠 공부 시간</label>
+          <select id="totalMinutes">
+            <option value="30">30분</option>
+            <option value="60"  selected>1시간</option>
+            <option value="90">1시간 30분</option>
+            <option value="120">2시간</option>
+            <option value="150">2시간 30분</option>
+            <option value="180">3시간</option>
+            <option value="210">3시간 30분</option>
+            <option value="240">4시간</option>
+            <option value="270">4시간 30분</option>
+            <option value="300">5시간</option>
+            <option value="330">5시간 30분</option>
+            <option value="360">6시간</option>
+            <option value="390">6시간 30분</option>
+            <option value="420">7시간</option>
+            <option value="450">7시간 30분</option>
+            <option value="480">8시간</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="margin-top:16px;">
+        <button id="submitBtn">또띠에게 타이머 추천 받기</button>
+      </div>
+
+      <div id="status" style="margin-top:16px;"></div>
+    </div>
+
+    <div class="card">
+      <h2>또띠 요약</h2>
+      <div id="resultSummary" class="muted">아직 요청하지 않았습니다.</div>
+    </div>
+
+    <div class="card">
+      <h2>추천 결과</h2>
+      <div id="recommendations">아직 데이터가 없습니다.</div>
+    </div>
+
+    <div class="card">
+      <h2>원본 JSON</h2>
+      <pre id="rawJson" class="json-box">{}</pre>
+    </div>
+  </div>
+
+  <script>
+    const submitBtn = document.getElementById("submitBtn");
+    const apiBaseInput = document.getElementById("apiBase");
+    const studyTypeInput = document.getElementById("studyType");
+    const totalMinutesInput = document.getElementById("totalMinutes");
+    const statusEl = document.getElementById("status");
+    const resultSummaryEl = document.getElementById("resultSummary");
+    const recommendationsEl = document.getElementById("recommendations");
+    const rawJsonEl = document.getElementById("rawJson");
+
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", "&#039;");
+    }
+
+    const studyTypeMap = {
+      memorization: "암기형",
+      comprehension: "이해형",
+      problem_solving: "문제풀이형",
+      practice: "실습형"
+    };
+
+    function renderRecommendations(data) {
+      if (!data.recommendations || data.recommendations.length === 0) {
+        recommendationsEl.innerHTML = "추천 결과가 없습니다.";
+        return;
+      }
+
+      const html = data.recommendations.map((rec) => {
+        const scheduleItems = rec.schedule.map((item) => {
+          return `<li>${item.order}. ${escapeHtml(item.label)} / ${escapeHtml(item.type)} / ${item.minutes}분</li>`;
+        }).join("");
+
+        return `
+          <div class="recommendation">
+            <h3>${rec.rank}순위 - ${escapeHtml(rec.title)}</h3>
+            <div>
+              <span class="badge">fit: ${escapeHtml(rec.fit_type)}</span>
+              <span class="badge">패턴: ${escapeHtml(rec.pattern_label)}</span>
+              <span class="badge">총 ${rec.total_minutes}분</span>
+              <span class="badge">차이 ${rec.difference_minutes}분</span>
+              <span class="badge">긴휴식 ${rec.long_break_included ? "포함" : "미포함"}</span>
+            </div>
+            <p>
+              공부 ${rec.study_minutes}분 / 짧은 휴식 ${rec.short_break_minutes}분
+            </p>
+            <details>
+              <summary>세부 스케줄 보기</summary>
+              <ul>${scheduleItems}</ul>
+            </details>
+          </div>
+        `;
+      }).join("");
+
+      recommendationsEl.innerHTML = html;
+    }
+
+    async function requestStudyPlan() {
+      const apiBase = apiBaseInput.value.trim().replace(/\/$/, "");
+      const studyType = studyTypeInput.value;
+      const totalStudyMinutes = Number(totalMinutesInput.value);
+
+      if (!apiBase) {
+        statusEl.innerHTML = '<div class="error">API Base URL을 입력해 주세요.</div>';
+        return;
+      }
+
+      if (!Number.isInteger(totalStudyMinutes) || totalStudyMinutes < 30 || totalStudyMinutes > 480) {
+        statusEl.innerHTML = '<div class="error">총 공부 시간은 30~480 사이의 정수여야 합니다.</div>';
+        return;
+      }
+
+      statusEl.innerHTML = '<div class="muted">요청 중...</div>';
+      resultSummaryEl.textContent = "불러오는 중...";
+      recommendationsEl.textContent = "불러오는 중...";
+      rawJsonEl.textContent = "{}";
+
+      const payload = {
+        study_type: studyType,
+        total_study_minutes: totalStudyMinutes
+      };
+
+      try {
+        const response = await fetch(`${apiBase}/ai/study-plan-options`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(payload)
+        });
+
+        const data = await response.json();
+        rawJsonEl.textContent = JSON.stringify(data, null, 2);
+
+        if (!response.ok) {
+          statusEl.innerHTML = `<div class="error">요청 실패 (${response.status})\n${escapeHtml(JSON.stringify(data, null, 2))}</div>`;
+          resultSummaryEl.textContent = "에러가 발생했습니다.";
+          recommendationsEl.textContent = "에러가 발생했습니다.";
+          return;
+        }
+
+        statusEl.innerHTML = '<div class="success">요청 성공</div>';
+        resultSummaryEl.innerHTML = `
+          <p><strong>공부 유형:</strong> ${studyTypeMap[data.study_type] || data.study_type}</p>
+          <p><strong>또띠 공부 시간:</strong> ${data.total_study_minutes}분</p>
+          <p><strong>타이머 추천:</strong> ${escapeHtml(data.summary)}</p>
+          <p><strong>또띠 메시지:</strong> ${escapeHtml(data.ai_message)}</p>
+          <p><strong>기본 규칙:</strong> 공부 ${data.base_rule.study_minutes}분 / 짧은 휴식 ${data.base_rule.short_break_minutes}분 / 긴 휴식 ${data.base_rule.long_break_minutes}분 / 사이클 ${data.base_rule.cycle_sessions}세션</p>
+        `;
+
+        renderRecommendations(data);
+      } catch (error) {
+        statusEl.innerHTML = `<div class="error">네트워크 또는 CORS 오류가 발생했습니다.\n${escapeHtml(error.message)}</div>`;
+        resultSummaryEl.textContent = "요청에 실패했습니다.";
+        recommendationsEl.textContent = "요청에 실패했습니다.";
+      }
+    }
+
+    submitBtn.addEventListener("click", requestStudyPlan);
+  </script>
+</body>
+</html>
