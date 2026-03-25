@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-router = APIRouter(prefix="/ai", tags=["ai"])
+router = APIRouter(prefix="/ai_service", tags=["ai_service"])
 
 
 # -----------------------------
