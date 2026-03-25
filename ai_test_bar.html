@@ -168,7 +168,7 @@
         <strong>토티 인사말</strong>
         <p id="greetingText" class="muted" style="margin: 10px 0 0;">토티가 인사를 준비하고 있어요.</p>
       </div>
-      <p class="muted">FastAPI의 <code>/ai/study-plan-options</code> 엔드포인트를 브라우저에서 시험하는 페이지입니다.</p>
+      <p class="muted">FastAPI의 <code>/ai_service/study-plan-options</code> 엔드포인트를 브라우저에서 시험하는 페이지입니다.</p>
 
       <div class="grid">
         <div>
@@ -326,7 +326,7 @@
       }
 
       try {
-        const response = await fetch(`${apiBase}/ai/greeting`);
+        const response = await fetch(`${apiBase}/ai_service/greeting`);
 
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
@@ -365,7 +365,7 @@
       };
 
       try {
-        const response = await fetch(`${apiBase}/ai/study-plan-options`, {
+        const response = await fetch(`${apiBase}/ai_service/study-plan-options`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json"

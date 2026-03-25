@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-router = APIRouter(prefix="/ai", tags=["ai"])
+router = APIRouter(prefix="/ai_service", tags=["ai_service"])
 
 
 # -----------------------------
@@ -95,7 +95,7 @@ RECOMMENDATION_PATTERNS: dict[StudyType, list[dict]] = {
 LONG_BREAK_MINUTES = 20  # 긴 휴식 고정 시간 (분)
 UNDER_LIMIT = 10         # under 허용 범위: 목표보다 최대 10분 짧은 것까지 허용
 OVER_LIMIT = 20          # over  허용 범위: 목표보다 최대 20분 긴 것까지 허용
-MAX_SESSIONS = 13        # 최대 세션 수
+MAX_SESSIONS = 20        # 최대 세션 수
 
 
 # -----------------------------
@@ -160,8 +160,9 @@ def build_schedule(
     include_long_break: bool,
 ) -> list[ScheduleItem]:
     label = BASE_RULES[study_type]["label"]
-    cycle_sessions = BASE_RULES[study_type]["cycle_sessions"]
     schedule: list[ScheduleItem] = []
+
+    accumulated_minutes = 0
 
     for i in range(1, num_sessions + 1):
         schedule.append(
@@ -172,6 +173,8 @@ def build_schedule(
                 label=f"{label} 세션 {i}",
             )
         )
+        accumulated_minutes += study_minutes
+
         schedule.append(
             ScheduleItem(
                 order=len(schedule) + 1,
@@ -180,10 +183,11 @@ def build_schedule(
                 label="짧은 휴식",
             )
         )
+        accumulated_minutes += short_break_minutes
 
-        # cycle_sessions 번째 세션 직후에만 긴 휴식 삽입
-        # (마지막 세션 뒤에는 넣지 않음 → i < num_sessions 조건)
-        if include_long_break and i == cycle_sessions and i < num_sessions:
+        # 마지막 세션 뒤에는 긴 휴식을 넣지 않음
+        # 누적 시간이 120분 이상 쌓였을 때만 긴 휴식 삽입
+        if include_long_break and i < num_sessions and accumulated_minutes >= 120:
             schedule.append(
                 ScheduleItem(
                     order=len(schedule) + 1,
@@ -192,6 +196,7 @@ def build_schedule(
                     label="긴 휴식",
                 )
             )
+            accumulated_minutes = 0
 
     return schedule
 
@@ -203,19 +208,45 @@ def calculate_total_minutes(
     num_sessions: int,
     include_long_break: bool,
 ) -> int:
-    total = (study_minutes + short_break_minutes) * num_sessions
-    cycle_sessions = BASE_RULES[study_type]["cycle_sessions"]
+    total = 0
+    accumulated_minutes = 0
 
-    # 긴 휴식은 사이클을 초과하는 세션이 있을 때만 1번 추가
-    if include_long_break and num_sessions > cycle_sessions:
-        total += LONG_BREAK_MINUTES
+    for i in range(1, num_sessions + 1):
+        total += study_minutes
+        accumulated_minutes += study_minutes
+
+        total += short_break_minutes
+        accumulated_minutes += short_break_minutes
+
+        # 마지막 세션 뒤에는 긴 휴식 없음
+        if include_long_break and i < num_sessions and accumulated_minutes >= 120:
+            total += LONG_BREAK_MINUTES
+            accumulated_minutes = 0
 
     return total
 
 
-def can_include_long_break(study_type: StudyType, num_sessions: int) -> bool:
-    cycle_sessions = BASE_RULES[study_type]["cycle_sessions"]
-    return num_sessions > cycle_sessions
+def can_include_long_break(
+    study_type: StudyType,
+    study_minutes: int,
+    short_break_minutes: int,
+    num_sessions: int,
+    target_minutes: int,
+) -> bool:
+    # 사용자의 총 공부시간이 120분 이하면 긴 휴식 없음
+    if target_minutes <= 120:
+        return False
+
+    accumulated_minutes = 0
+
+    for i in range(1, num_sessions + 1):
+        accumulated_minutes += study_minutes + short_break_minutes
+
+        # 마지막 세션 전에 누적 120분을 넘기는 지점이 있어야 긴 휴식 가능
+        if i < num_sessions and accumulated_minutes >= 120:
+            return True
+
+    return False
 
 
 def fit_type_from_difference(diff: int) -> RecommendationFit:
@@ -284,7 +315,13 @@ def make_candidate_recommendations(study_type: StudyType, target_minutes: int) -
                 seen_signatures.add(sig_without)
 
             # 긴 휴식 포함 버전
-            if can_include_long_break(study_type, num_sessions):
+            if can_include_long_break(
+                study_type=study_type,
+                study_minutes=study_minutes,
+                short_break_minutes=short_break_minutes,
+                num_sessions=num_sessions,
+                target_minutes=target_minutes,
+            ):
                 total_with_long = calculate_total_minutes(
                     study_type=study_type,
                     study_minutes=study_minutes,
@@ -324,70 +361,43 @@ def make_candidate_recommendations(study_type: StudyType, target_minutes: int) -
 
 def is_one_recommendation_case(study_type: StudyType, target_minutes: int) -> PlanRecommendation | None:
     """
-    목표 시간이 기본 리듬으로 정확히 나누어 떨어지는 경우 바로 반환 (early return)
-
-    경우 A: 기본 세션 반복만으로 딱 맞음
-    경우 B: 기본 사이클 + 긴 휴식 + 추가 세션으로 딱 맞음
+    목표 시간이 기본 리듬으로 정확히 맞는 경우 1개 추천으로 바로 반환한다.
+    반복 긴 휴식 규칙을 반영하기 위해 실제 계산 함수 기준으로 검사한다.
     """
     rule = BASE_RULES[study_type]
     study_minutes = rule["study_minutes"]
     short_break_minutes = rule["short_break_minutes"]
-    cycle_sessions = rule["cycle_sessions"]
 
-    session_total = study_minutes + short_break_minutes
-
-    # 경우 A
-    if target_minutes % session_total == 0:
-        num_sessions = target_minutes // session_total
-        if 1 <= num_sessions <= MAX_SESSIONS:
-            schedule = build_schedule(
+    for num_sessions in range(1, MAX_SESSIONS + 1):
+        for include_long_break in (False, True):
+            total_minutes = calculate_total_minutes(
                 study_type=study_type,
                 study_minutes=study_minutes,
                 short_break_minutes=short_break_minutes,
                 num_sessions=num_sessions,
-                include_long_break=False,
-            )
-            return PlanRecommendation(
-                rank=1,
-                fit_type=RecommendationFit.exact,
-                title=title_from_fit(RecommendationFit.exact),
-                pattern_label="기본 리듬",
-                study_minutes=study_minutes,
-                short_break_minutes=short_break_minutes,
-                total_minutes=target_minutes,
-                difference_minutes=0,
-                long_break_included=False,
-                schedule=schedule,
+                include_long_break=include_long_break,
             )
 
-    # 경우 B
-    cycle_total_with_long = (session_total * cycle_sessions) + LONG_BREAK_MINUTES
-    remaining = target_minutes - cycle_total_with_long
-
-    if remaining >= 0 and remaining % session_total == 0:
-        extra_sessions = remaining // session_total
-        num_sessions = cycle_sessions + extra_sessions
-
-        if cycle_sessions < num_sessions <= MAX_SESSIONS:
-            schedule = build_schedule(
-                study_type=study_type,
-                study_minutes=study_minutes,
-                short_break_minutes=short_break_minutes,
-                num_sessions=num_sessions,
-                include_long_break=True,
-            )
-            return PlanRecommendation(
-                rank=1,
-                fit_type=RecommendationFit.exact,
-                title=title_from_fit(RecommendationFit.exact),
-                pattern_label="기본 리듬",
-                study_minutes=study_minutes,
-                short_break_minutes=short_break_minutes,
-                total_minutes=target_minutes,
-                difference_minutes=0,
-                long_break_included=True,
-                schedule=schedule,
-            )
+            if total_minutes == target_minutes:
+                schedule = build_schedule(
+                    study_type=study_type,
+                    study_minutes=study_minutes,
+                    short_break_minutes=short_break_minutes,
+                    num_sessions=num_sessions,
+                    include_long_break=include_long_break,
+                )
+                return PlanRecommendation(
+                    rank=1,
+                    fit_type=RecommendationFit.exact,
+                    title=title_from_fit(RecommendationFit.exact),
+                    pattern_label="기본 리듬",
+                    study_minutes=study_minutes,
+                    short_break_minutes=short_break_minutes,
+                    total_minutes=target_minutes,
+                    difference_minutes=0,
+                    long_break_included=include_long_break,
+                    schedule=schedule,
+                )
 
     return None
 
