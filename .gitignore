@@ -13,5 +13,6 @@ test_ai_service.py
 ai_test_bar.html
 dockerfile
 requirements.txt
+conftest.py
 
 
