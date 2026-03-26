@@ -8,5 +8,10 @@ __pycache__/
 *.pyo
 *.pyd
 .pytest_cache/
+
 test_ai_service.py
+ai_test_bar.html
+dockerfile
+requirements.txt
+
 
