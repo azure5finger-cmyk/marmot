@@ -1,15 +1,16 @@
 from __future__ import annotations
-from enum import Enum
-from fastapi import APIRouter, FastAPI
-from pydantic import BaseModel, Field
+
 import os
-from typing import Optional
+from enum import Enum
+
+from dotenv import load_dotenv
+from fastapi import APIRouter, FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from google import genai
 from google.genai import types
-from dotenv import load_dotenv
+from pydantic import BaseModel, Field
 
 load_dotenv()
-
 
 router = APIRouter(prefix="/ai_service", tags=["ai_service"])
 
@@ -39,13 +40,12 @@ class RecommendationFit(str, Enum):
 # -----------------------------
 # Rules
 # -----------------------------
-# 공부 유형별 기본 포모도로 규칙
 BASE_RULES: dict[StudyType, dict] = {
     StudyType.memorization: {
         "label": "암기형",
         "study_minutes": 25,
         "short_break_minutes": 5,
-        "cycle_sessions": 4,   # 긴 휴식 전까지의 기본 세션 수
+        "cycle_sessions": 4,
     },
     StudyType.comprehension: {
         "label": "이해형",
@@ -67,8 +67,6 @@ BASE_RULES: dict[StudyType, dict] = {
     },
 }
 
-# 공부 유형별 추천 패턴 후보 (기본 리듬 + 대안 2개)
-# study + short_break = 세션 1개의 총 시간
 RECOMMENDATION_PATTERNS: dict[StudyType, list[dict]] = {
     StudyType.memorization: [
         {"study": 25, "break": 5, "label": "기본 리듬"},
@@ -78,7 +76,7 @@ RECOMMENDATION_PATTERNS: dict[StudyType, list[dict]] = {
     StudyType.comprehension: [
         {"study": 40, "break": 10, "label": "기본 리듬"},
         {"study": 50, "break": 10, "label": "길게 이해"},
-        {"study": 30, "break": 5,  "label": "짧게 읽기"},
+        {"study": 30, "break": 5, "label": "짧게 읽기"},
     ],
     StudyType.problem_solving: [
         {"study": 50, "break": 10, "label": "기본 리듬"},
@@ -92,10 +90,12 @@ RECOMMENDATION_PATTERNS: dict[StudyType, list[dict]] = {
     ],
 }
 
-LONG_BREAK_MINUTES = 30  # 긴 휴식 고정 시간 (분)
-UNDER_LIMIT = 10         # under 허용 범위: 목표보다 최대 10분 짧은 것까지 허용
-OVER_LIMIT = 20          # over  허용 범위: 목표보다 최대 20분 긴 것까지 허용
-MAX_SESSIONS = 20        # 최대 세션 수
+LONG_BREAK_MINUTES = 30
+UNDER_LIMIT = 10
+OVER_LIMIT = 20
+MAX_SESSIONS = 20
+LONG_BREAK_THRESHOLD_MINUTES = 120
+LONG_BREAK_REQUIRED_SESSION_COUNT = 6
 
 
 # -----------------------------
@@ -109,8 +109,8 @@ class StudyPlanRequest(BaseModel):
 class BaseRule(BaseModel):
     study_minutes: int
     short_break_minutes: int
-    session_total_minutes: int   # study + short_break (세션 1개 총 시간)
-    cycle_sessions: int          # 긴 휴식 전까지의 세션 수
+    session_total_minutes: int
+    cycle_sessions: int
     long_break_minutes: int
 
 
@@ -130,7 +130,7 @@ class PlanRecommendation(BaseModel):
     short_break_minutes: int
     num_sessions: int
     total_minutes: int
-    difference_minutes: int      # total_minutes - target_minutes (음수면 under, 양수면 over)
+    difference_minutes: int
     long_break_included: bool
     schedule: list[ScheduleItem]
 
@@ -143,8 +143,10 @@ class StudyPlanResponse(BaseModel):
     summary: str
     ai_message: str
 
+
 class GreetingResponse(BaseModel):
     message: str
+
 
 # -----------------------------
 # Helper Functions
@@ -162,7 +164,6 @@ def build_schedule(
 ) -> list[ScheduleItem]:
     label = BASE_RULES[study_type]["label"]
     schedule: list[ScheduleItem] = []
-
     accumulated_minutes = 0
 
     for i in range(1, num_sessions + 1):
@@ -186,9 +187,7 @@ def build_schedule(
         )
         accumulated_minutes += short_break_minutes
 
-        # 마지막 세션 뒤에는 긴 휴식을 넣지 않음
-        # 누적 시간이 120분 이상 쌓였을 때만 긴 휴식 삽입
-        if include_long_break and i < num_sessions and accumulated_minutes >= 120:
+        if include_long_break and i < num_sessions and accumulated_minutes >= LONG_BREAK_THRESHOLD_MINUTES:
             schedule.append(
                 ScheduleItem(
                     order=len(schedule) + 1,
@@ -219,12 +218,12 @@ def calculate_total_minutes(
         total += short_break_minutes
         accumulated_minutes += short_break_minutes
 
-        # 마지막 세션 뒤에는 긴 휴식 없음
-        if include_long_break and i < num_sessions and accumulated_minutes >= 120:
+        if include_long_break and i < num_sessions and accumulated_minutes >= LONG_BREAK_THRESHOLD_MINUTES:
             total += LONG_BREAK_MINUTES
             accumulated_minutes = 0
 
     return total
+
 
 def can_include_long_break(
     study_type: StudyType,
@@ -233,8 +232,7 @@ def can_include_long_break(
     num_sessions: int,
     target_minutes: int,
 ) -> bool:
-    # 2시간 이하이면 긴 휴식 없음
-    if target_minutes <= 120:
+    if target_minutes <= LONG_BREAK_THRESHOLD_MINUTES:
         return False
 
     session_total = study_minutes + short_break_minutes
@@ -243,54 +241,21 @@ def can_include_long_break(
     for i in range(1, num_sessions + 1):
         accumulated_minutes += session_total
 
-        # 마지막 세션 뒤에는 긴 휴식 없음
         if i >= num_sessions:
             continue
 
-        # 2시간 이상 누적되었을 때만 긴 휴식 후보
-        if accumulated_minutes >= 120:
-            minutes_used_before_long_break = accumulated_minutes
-            remaining_after_long_break = (
-                target_minutes
-                - minutes_used_before_long_break
-                - LONG_BREAK_MINUTES
-            )
+        if accumulated_minutes >= LONG_BREAK_THRESHOLD_MINUTES:
+            remaining_after_long_break = target_minutes - accumulated_minutes - LONG_BREAK_MINUTES
 
-            # 예외 1: 긴 휴식 후 바로 끝나는 경우
             if remaining_after_long_break <= 0:
                 continue
 
-            # 예외 2: 긴 휴식 후 다음 1세션이 너무 짧아지는 경우
-            # 여기서는 "정상 1세션(study+short_break)"보다 짧으면 생략으로 처리
             if remaining_after_long_break < session_total:
                 continue
 
             return True
 
     return False
-
-#긴 휴식 테스트 문제 발생
-# def can_include_long_break(
-#     study_type: StudyType,
-#     study_minutes: int,
-#     short_break_minutes: int,
-#     num_sessions: int,
-#     target_minutes: int,
-# ) -> bool:
-#     # 사용자의 총 공부시간이 120분 이하면 긴 휴식 없음
-#     if target_minutes <= 120:
-#         return False
-
-#     accumulated_minutes = 0
-
-#     for i in range(1, num_sessions + 1):
-#         accumulated_minutes += study_minutes + short_break_minutes
-
-#         # 마지막 세션 전에 누적 120분을 넘기는 지점이 있어야 긴 휴식 가능
-#         if i < num_sessions and accumulated_minutes >= 120:
-#             return True
-
-#     return False
 
 
 def fit_type_from_difference(diff: int) -> RecommendationFit:
@@ -310,10 +275,6 @@ def title_from_fit(fit_type: RecommendationFit) -> str:
 
 
 def make_candidate_recommendations(study_type: StudyType, target_minutes: int) -> list[PlanRecommendation]:
-    """
-    RECOMMENDATION_PATTERNS의 모든 패턴 × 세션 수 1~MAX_SESSIONS × 긴휴식 포함/미포함
-    조합으로 후보 전체를 생성한다. 중복은 seen_signatures로 걸러낸다.
-    """
     candidates: list[PlanRecommendation] = []
     seen_signatures: set[tuple] = set()
 
@@ -323,7 +284,6 @@ def make_candidate_recommendations(study_type: StudyType, target_minutes: int) -
         pattern_label = pattern["label"]
 
         for num_sessions in range(1, MAX_SESSIONS + 1):
-            # 긴 휴식 없는 버전
             total_without_long = calculate_total_minutes(
                 study_type=study_type,
                 study_minutes=study_minutes,
@@ -359,7 +319,6 @@ def make_candidate_recommendations(study_type: StudyType, target_minutes: int) -
                 )
                 seen_signatures.add(sig_without)
 
-            # 긴 휴식 포함 버전
             if can_include_long_break(
                 study_type=study_type,
                 study_minutes=study_minutes,
@@ -404,12 +363,9 @@ def make_candidate_recommendations(study_type: StudyType, target_minutes: int) -
 
     return candidates
 
+
 def is_one_recommendation_case(study_type: StudyType, target_minutes: int) -> PlanRecommendation | None:
-    """
-    목표 시간이 기본 리듬으로 정확히 맞는 경우 1개 추천으로 바로 반환한다.
-    단, 120분 초과에서는 단일 exact 추천으로 바로 종료하지 않는다.
-    """
-    if target_minutes > 120:
+    if target_minutes > LONG_BREAK_THRESHOLD_MINUTES:
         return None
 
     rule = BASE_RULES[study_type]
@@ -450,11 +406,16 @@ def is_one_recommendation_case(study_type: StudyType, target_minutes: int) -> Pl
     return None
 
 
+def should_exclude_candidate(total_study_minutes: int, candidate: PlanRecommendation) -> bool:
+    if total_study_minutes <= LONG_BREAK_THRESHOLD_MINUTES:
+        return False
+
+    return candidate.num_sessions >= LONG_BREAK_REQUIRED_SESSION_COUNT and not candidate.long_break_included
+
+
 # -----------------------------
 # Core Logic
 # -----------------------------
-
-# 기본 리듬으로 딱 떨어지면 바로 반환
 def generate_study_plan_options(study_type: StudyType, total_study_minutes: int) -> StudyPlanResponse:
     rule = get_base_rule(study_type)
     base_rule = BaseRule(
@@ -489,7 +450,11 @@ def generate_study_plan_options(study_type: StudyType, total_study_minutes: int)
     under_candidates = [c for c in candidates if 0 > c.difference_minutes >= -UNDER_LIMIT]
     over_candidates = [c for c in candidates if 0 < c.difference_minutes <= OVER_LIMIT]
 
-    prefer_long_break = total_study_minutes > 120
+    exact_candidates = [c for c in exact_candidates if not should_exclude_candidate(total_study_minutes, c)]
+    under_candidates = [c for c in under_candidates if not should_exclude_candidate(total_study_minutes, c)]
+    over_candidates = [c for c in over_candidates if not should_exclude_candidate(total_study_minutes, c)]
+
+    prefer_long_break = total_study_minutes > LONG_BREAK_THRESHOLD_MINUTES
 
     def long_break_priority(item: PlanRecommendation) -> int:
         if not prefer_long_break:
@@ -508,6 +473,7 @@ def generate_study_plan_options(study_type: StudyType, total_study_minutes: int)
             long_break_priority(x),
             abs(x.difference_minutes),
             x.total_minutes,
+            x.study_minutes,
         )
     )
     over_candidates.sort(
@@ -515,18 +481,8 @@ def generate_study_plan_options(study_type: StudyType, total_study_minutes: int)
             long_break_priority(x),
             x.difference_minutes,
             x.total_minutes,
+            x.study_minutes,
         )
-    )
-
-    # 6세션 이상인데 긴 휴식 없는 exact는 추천에서 제외
-    exact_candidates = [
-        c for c in exact_candidates
-        if not (c.num_sessions >= 6 and not c.long_break_included)
-    ]
-
-    # under / over 중 긴 휴식 포함 후보가 하나라도 있으면 exact는 3순위
-    has_long_break_in_other_candidates = any(
-        c.long_break_included for c in (under_candidates + over_candidates)
     )
 
     recommendations: list[PlanRecommendation] = []
@@ -540,27 +496,35 @@ def generate_study_plan_options(study_type: StudyType, total_study_minutes: int)
             item.total_minutes,
             item.long_break_included,
         )
-        if sig not in used_signatures:
+        if sig not in used_signatures and len(recommendations) < 3:
             recommendations.append(item)
             used_signatures.add(sig)
 
     top_exact = exact_candidates[:1]
-    top_under = under_candidates[:1]
-    top_over = over_candidates[:1]
+    top_under_long = [c for c in under_candidates if c.long_break_included][:1]
+    top_over_long = [c for c in over_candidates if c.long_break_included][:1]
+    top_under_any = under_candidates[:1]
+    top_over_any = over_candidates[:1]
+
+    has_long_break_in_other_candidates = bool(top_under_long or top_over_long)
 
     if has_long_break_in_other_candidates:
-        for item in top_under:
+        for item in top_under_long:
             add_recommendation(item)
-        for item in top_over:
+        for item in top_over_long:
             add_recommendation(item)
         for item in top_exact:
+            add_recommendation(item)
+        for item in top_under_any:
+            add_recommendation(item)
+        for item in top_over_any:
             add_recommendation(item)
     else:
         for item in top_exact:
             add_recommendation(item)
-        for item in top_under:
+        for item in top_under_any:
             add_recommendation(item)
-        for item in top_over:
+        for item in top_over_any:
             add_recommendation(item)
 
     for idx, recommendation in enumerate(recommendations, start=1):
@@ -595,6 +559,7 @@ def _format_recommendations_for_prompt(recommendations: list[PlanRecommendation]
                 f"pattern_label={rec.pattern_label}, "
                 f"study={rec.study_minutes}분, "
                 f"short_break={rec.short_break_minutes}분, "
+                f"num_sessions={rec.num_sessions}, "
                 f"total={rec.total_minutes}분, "
                 f"difference={rec.difference_minutes}분, "
                 f"long_break_included={rec.long_break_included}"
@@ -603,12 +568,9 @@ def _format_recommendations_for_prompt(recommendations: list[PlanRecommendation]
 
     return "\n".join(lines)
 
-# 토티 인사말
-def generate_greeting_message(
-    model_name: str = "gemini-2.5-flash",
-) -> str:
+
+def generate_greeting_message(model_name: str = "gemini-2.5-flash") -> str:
     api_key = os.getenv("GEMINI_API_KEY")
-    print(f"[greeting 1] api_key 존재: {bool(api_key)}")  # 👈
     if not api_key:
         return (
             "안녕하세요, 저는 공부 리듬을 함께 맞춰주는 토티예요. "
@@ -624,18 +586,17 @@ def generate_greeting_message(
         "사용자 입력과 무관한 일반 인사말만 작성하세요. "
         "공부 시작을 부담 없게 도와주는 느낌을 주세요. "
         "이모티콘과 과한 감탄사는 사용하지 마세요."
+        
     )
 
     user_prompt = (
         "사용자에게 보여줄 첫 인사말을 작성하세요. "
-        "토티가 공부 리듬을 함께 맞춰주는 서비스라는 점이 자연스럽게 드러나면 좋습니다."
-        "인사말의 예시 - 안녕하세요, 저는 공부 리듬을 함께 맞춰주는 토티예요. 오늘 공부 시간에 맞는 타이머 구성을 편하게 추천해드릴게요."
+        "토티가 공부 리듬을 함께 맞춰주는 서비스라는 점이 자연스럽게 드러나면 좋습니다. "
+        "예시: 안녕하세요, 저는 공부 리듬을 함께 맞춰주는 토티예요. 오늘 공부 시간에 맞는 타이머 구성을 편하게 추천해드릴게요."
     )
 
     try:
         client = genai.Client(api_key=api_key)
-        print("[greeting 2] client 생성 성공")  # 👈
-
         response = client.models.generate_content(
             model=model_name,
             contents=user_prompt,
@@ -646,16 +607,11 @@ def generate_greeting_message(
                 thinking_config=types.ThinkingConfig(thinking_budget=0),
             ),
         )
-        print(f"[greeting 3] response 받음: {repr(response.text)}")  # 👈
-
         text = (response.text or "").strip()
-        print(f"[greeting 전체 텍스트] {repr(text)}")  # 👈 추가
         if text:
             return text
-
-    except Exception as e:
-        print(f"[greeting 에러] {e}")  # 👈
-        # pass
+    except Exception:
+        pass
 
     return (
         "안녕하세요, 저는 공부 리듬을 함께 맞춰주는 토티예요. "
@@ -669,10 +625,6 @@ def generate_ai_message(
     recommendations: list[PlanRecommendation],
     model_name: str = "gemini-2.5-flash",
 ) -> str:
-    """
-    규칙 기반 추천 결과를 바탕으로 Gemini가 사용자용 설명/격려 메시지를 생성한다.
-    실패하면 규칙 기반 fallback 메시지를 반환한다.
-    """
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         return build_fallback_ai_message(
@@ -684,33 +636,25 @@ def generate_ai_message(
     if not recommendations:
         return "추천을 준비하고 있어요. 잠시 후 다시 시도해 주세요."
 
-    study_type_label = BASE_RULES[study_type]["label"]
     recommendation_text = _format_recommendations_for_prompt(recommendations)
 
     system_instruction = (
-    "당신은 포모도로 학습 도우미 AI '토티'입니다. "
-    "토티는 사용자가 공부를 부담 없이 시작할 수 있도록 도와주는, 친근하고 다정한 학습 메이트입니다. "
-    "항상 한국어로 답하세요. "
-    "말투는 부드럽고 친절하며, 짧고 자연스럽게 유지하세요. "
-    "너무 귀엽거나 과장된 표현은 피하고, 실제 서비스 안내문처럼 편안한 톤을 사용하세요. "
-    "사용자와 함께 공부 리듬을 맞춰주는 느낌으로 말하세요. "
-    "답변은 3~5문장으로 구성하세요. "
-    "가끔 짧은 공감 표현(예: '이 정도면 시작하기 딱 좋아요')을 자연스럽게 포함하세요. "
-    "불필요한 감탄사나 이모티콘은 사용하지 마세요. "
-    "반드시 아래 규칙을 지키세요:\n"
-    "1. 추천 결과를 왜 제안했는지 쉽게 설명할 것\n"
-    "2. 가장 적합한 추천 1개를 자연스럽게 강조할 것\n"
-    "3. 사용자가 부담 없이 시작할 수 있도록 짧고 다정한 격려 문장 1개를 포함할 것\n"
-    "4. 존재하지 않는 시간이나 일정을 지어내지 말 것\n"
-    "5. recommendations에 있는 정보만 사용해서 설명할 것\n"
-    "6. 토티답게 따뜻하고 가볍지만, 유치하지 않은 톤을 유지할 것"
-)
+        "당신은 포모도로 학습 도우미 AI '토티'입니다. "
+        "토티는 사용자가 공부를 부담 없이 시작할 수 있도록 도와주는 친근하고 다정한 학습 메이트입니다. "
+        "항상 한국어로 답하세요. "
+        "말투는 부드럽고 친절하며 짧고 자연스럽게 유지하세요. "
+        "너무 귀엽거나 과장된 표현은 피하고 실제 서비스 안내문처럼 편안한 톤을 사용하세요. "
+        "답변은 3~5문장으로 구성하세요. "
+        "반드시 recommendations에 있는 정보만 사용하세요. "
+        "가장 적합한 추천 1개는 recommendations의 첫 번째 항목입니다. "
+        "존재하지 않는 시간이나 일정을 지어내지 마세요."
+        "total_study_minutes는 사용자가 오늘 공부할 목표 시간입니다. "
+        "평소 학습량, 습관, 과거 데이터에 대한 추측은 절대 하지 마세요. "
+    )
 
     user_prompt = f"""
-
 사용자 총 학습 시간: {total_study_minutes}분
-
-
+이 값은 사용자가 오늘 공부하려는 목표 시간입니다.
 추천 목록:
 {recommendation_text}
 
@@ -719,9 +663,9 @@ def generate_ai_message(
 출력 조건:
 - 한국어
 - 3~5문장
-- 첫 문장에서는 전체 추천 방향을 설명
-- 둘째 문장에서는 가장 적합한 추천 1개를 자연스럽게 강조
-- 셋째 문장 이후에는 휴식 리듬 또는 집중 흐름의 장점을 설명
+- 첫 문장에서는 전체 추천 방향 설명
+- 둘째 문장에서는 recommendations의 첫 번째 항목을 자연스럽게 강조
+- 셋째 문장 이후에는 휴식 리듬 또는 집중 흐름의 장점 설명
 - 마지막 문장에는 짧은 격려 추가
 - 마크다운 금지
 - 번호 목록 금지
@@ -729,7 +673,6 @@ def generate_ai_message(
 
     try:
         client = genai.Client(api_key=api_key)
-
         response = client.models.generate_content(
             model=model_name,
             contents=user_prompt,
@@ -740,11 +683,9 @@ def generate_ai_message(
                 thinking_config=types.ThinkingConfig(thinking_budget=0),
             ),
         )
-
         text = (response.text or "").strip()
         if text:
             return text
-
     except Exception:
         pass
 
@@ -752,7 +693,7 @@ def generate_ai_message(
         study_type=study_type,
         total_study_minutes=total_study_minutes,
         recommendations=recommendations,
-    )    
+    )
 
 
 def build_fallback_ai_message(
@@ -760,9 +701,6 @@ def build_fallback_ai_message(
     total_study_minutes: int,
     recommendations: list[PlanRecommendation],
 ) -> str:
-    """
-    Gemini 호출 실패 시 사용할 규칙 기반 메시지
-    """
     label = BASE_RULES[study_type]["label"]
 
     if not recommendations:
@@ -770,11 +708,11 @@ def build_fallback_ai_message(
 
     top = recommendations[0]
 
-    if top.fit_type.value == "exact":
+    if top.fit_type == RecommendationFit.exact:
         first_sentence = "지금 시간에 딱 맞는 구성이에요."
-    elif top.fit_type.value == "under":
+    elif top.fit_type == RecommendationFit.under:
         first_sentence = "부담이 적은 구성이에요."
-    elif top.fit_type.value == "over":
+    elif top.fit_type == RecommendationFit.over:
         first_sentence = "조금 길어도 집중하기 좋은 구성이에요."
     else:
         first_sentence = "균형 있게 공부하기 좋은 구성이에요."
@@ -786,14 +724,13 @@ def build_fallback_ai_message(
     )
 
 
-
-
 # -----------------------------
 # Router endpoints
 # -----------------------------
 @router.get("", summary="AI 서비스 상태 확인")
 def ai_root() -> dict[str, str]:
     return {"message": "AI service is running"}
+
 
 @router.get("/greeting", response_model=GreetingResponse, summary="토티 인사말")
 def greeting() -> GreetingResponse:
@@ -809,16 +746,14 @@ def create_study_plan(request: StudyPlanRequest) -> StudyPlanResponse:
 
 
 # -----------------------------
-# Standalone app (로컬 테스트용)
+# Standalone app
 # uvicorn ai_service:app --reload
 # -----------------------------
-from fastapi.middleware.cors import CORSMiddleware
-
 app = FastAPI(title="Pomodoro AI Service", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 테스트용. 나중에는 프론트 주소만 허용하는 것이 좋음
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
