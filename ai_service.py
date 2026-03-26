@@ -92,7 +92,7 @@ RECOMMENDATION_PATTERNS: dict[StudyType, list[dict]] = {
     ],
 }
 
-LONG_BREAK_MINUTES = 20  # 긴 휴식 고정 시간 (분)
+LONG_BREAK_MINUTES = 30  # 긴 휴식 고정 시간 (분)
 UNDER_LIMIT = 10         # under 허용 범위: 목표보다 최대 10분 짧은 것까지 허용
 OVER_LIMIT = 20          # over  허용 범위: 목표보다 최대 20분 긴 것까지 허용
 MAX_SESSIONS = 20        # 최대 세션 수
@@ -128,6 +128,7 @@ class PlanRecommendation(BaseModel):
     pattern_label: str
     study_minutes: int
     short_break_minutes: int
+    num_sessions: int
     total_minutes: int
     difference_minutes: int      # total_minutes - target_minutes (음수면 under, 양수면 over)
     long_break_included: bool
@@ -225,7 +226,6 @@ def calculate_total_minutes(
 
     return total
 
-
 def can_include_long_break(
     study_type: StudyType,
     study_minutes: int,
@@ -233,20 +233,64 @@ def can_include_long_break(
     num_sessions: int,
     target_minutes: int,
 ) -> bool:
-    # 사용자의 총 공부시간이 120분 이하면 긴 휴식 없음
+    # 2시간 이하이면 긴 휴식 없음
     if target_minutes <= 120:
         return False
 
+    session_total = study_minutes + short_break_minutes
     accumulated_minutes = 0
 
     for i in range(1, num_sessions + 1):
-        accumulated_minutes += study_minutes + short_break_minutes
+        accumulated_minutes += session_total
 
-        # 마지막 세션 전에 누적 120분을 넘기는 지점이 있어야 긴 휴식 가능
-        if i < num_sessions and accumulated_minutes >= 120:
+        # 마지막 세션 뒤에는 긴 휴식 없음
+        if i >= num_sessions:
+            continue
+
+        # 2시간 이상 누적되었을 때만 긴 휴식 후보
+        if accumulated_minutes >= 120:
+            minutes_used_before_long_break = accumulated_minutes
+            remaining_after_long_break = (
+                target_minutes
+                - minutes_used_before_long_break
+                - LONG_BREAK_MINUTES
+            )
+
+            # 예외 1: 긴 휴식 후 바로 끝나는 경우
+            if remaining_after_long_break <= 0:
+                continue
+
+            # 예외 2: 긴 휴식 후 다음 1세션이 너무 짧아지는 경우
+            # 여기서는 "정상 1세션(study+short_break)"보다 짧으면 생략으로 처리
+            if remaining_after_long_break < session_total:
+                continue
+
             return True
 
     return False
+
+#긴 휴식 테스트 문제 발생
+# def can_include_long_break(
+#     study_type: StudyType,
+#     study_minutes: int,
+#     short_break_minutes: int,
+#     num_sessions: int,
+#     target_minutes: int,
+# ) -> bool:
+#     # 사용자의 총 공부시간이 120분 이하면 긴 휴식 없음
+#     if target_minutes <= 120:
+#         return False
+
+#     accumulated_minutes = 0
+
+#     for i in range(1, num_sessions + 1):
+#         accumulated_minutes += study_minutes + short_break_minutes
+
+#         # 마지막 세션 전에 누적 120분을 넘기는 지점이 있어야 긴 휴식 가능
+#         if i < num_sessions and accumulated_minutes >= 120:
+#             return True
+
+#     return False
 
 
 def fit_type_from_difference(diff: int) -> RecommendationFit:
@@ -267,7 +311,7 @@ def title_from_fit(fit_type: RecommendationFit) -> str:
 
 def make_candidate_recommendations(study_type: StudyType, target_minutes: int) -> list[PlanRecommendation]:
     """
-    RECOMMENDATION_PATTERNS의 모든 패턴 × 세션 수 1~13 × 긴휴식 포함/미포함
+    RECOMMENDATION_PATTERNS의 모든 패턴 × 세션 수 1~MAX_SESSIONS × 긴휴식 포함/미포함
     조합으로 후보 전체를 생성한다. 중복은 seen_signatures로 걸러낸다.
     """
     candidates: list[PlanRecommendation] = []
@@ -306,6 +350,7 @@ def make_candidate_recommendations(study_type: StudyType, target_minutes: int) -
                         pattern_label=pattern_label,
                         study_minutes=study_minutes,
                         short_break_minutes=short_break_minutes,
+                        num_sessions=num_sessions,
                         total_minutes=total_without_long,
                         difference_minutes=diff_without_long,
                         long_break_included=False,
@@ -348,6 +393,7 @@ def make_candidate_recommendations(study_type: StudyType, target_minutes: int) -
                             pattern_label=pattern_label,
                             study_minutes=study_minutes,
                             short_break_minutes=short_break_minutes,
+                            num_sessions=num_sessions,
                             total_minutes=total_with_long,
                             difference_minutes=diff_with_long,
                             long_break_included=True,
@@ -358,46 +404,48 @@ def make_candidate_recommendations(study_type: StudyType, target_minutes: int) -
 
     return candidates
 
-
 def is_one_recommendation_case(study_type: StudyType, target_minutes: int) -> PlanRecommendation | None:
     """
     목표 시간이 기본 리듬으로 정확히 맞는 경우 1개 추천으로 바로 반환한다.
-    반복 긴 휴식 규칙을 반영하기 위해 실제 계산 함수 기준으로 검사한다.
+    단, 120분 초과에서는 단일 exact 추천으로 바로 종료하지 않는다.
     """
+    if target_minutes > 120:
+        return None
+
     rule = BASE_RULES[study_type]
     study_minutes = rule["study_minutes"]
     short_break_minutes = rule["short_break_minutes"]
 
     for num_sessions in range(1, MAX_SESSIONS + 1):
-        for include_long_break in (False, True):
-            total_minutes = calculate_total_minutes(
+        total_minutes = calculate_total_minutes(
+            study_type=study_type,
+            study_minutes=study_minutes,
+            short_break_minutes=short_break_minutes,
+            num_sessions=num_sessions,
+            include_long_break=False,
+        )
+
+        if total_minutes == target_minutes:
+            schedule = build_schedule(
                 study_type=study_type,
                 study_minutes=study_minutes,
                 short_break_minutes=short_break_minutes,
                 num_sessions=num_sessions,
-                include_long_break=include_long_break,
+                include_long_break=False,
             )
-
-            if total_minutes == target_minutes:
-                schedule = build_schedule(
-                    study_type=study_type,
-                    study_minutes=study_minutes,
-                    short_break_minutes=short_break_minutes,
-                    num_sessions=num_sessions,
-                    include_long_break=include_long_break,
-                )
-                return PlanRecommendation(
-                    rank=1,
-                    fit_type=RecommendationFit.exact,
-                    title=title_from_fit(RecommendationFit.exact),
-                    pattern_label="기본 리듬",
-                    study_minutes=study_minutes,
-                    short_break_minutes=short_break_minutes,
-                    total_minutes=target_minutes,
-                    difference_minutes=0,
-                    long_break_included=include_long_break,
-                    schedule=schedule,
-                )
+            return PlanRecommendation(
+                rank=1,
+                fit_type=RecommendationFit.exact,
+                title=title_from_fit(RecommendationFit.exact),
+                pattern_label="기본 리듬",
+                study_minutes=study_minutes,
+                short_break_minutes=short_break_minutes,
+                num_sessions=num_sessions,
+                total_minutes=target_minutes,
+                difference_minutes=0,
+                long_break_included=False,
+                schedule=schedule,
+            )
 
     return None
 
@@ -441,24 +489,79 @@ def generate_study_plan_options(study_type: StudyType, total_study_minutes: int)
     under_candidates = [c for c in candidates if 0 > c.difference_minutes >= -UNDER_LIMIT]
     over_candidates = [c for c in candidates if 0 < c.difference_minutes <= OVER_LIMIT]
 
-    exact_candidates.sort(key=lambda x: (x.total_minutes, x.study_minutes))
-    under_candidates.sort(key=lambda x: (abs(x.difference_minutes), x.total_minutes))
-    over_candidates.sort(key=lambda x: (x.difference_minutes, x.total_minutes))
+    prefer_long_break = total_study_minutes > 120
+
+    def long_break_priority(item: PlanRecommendation) -> int:
+        if not prefer_long_break:
+            return 0
+        return 0 if item.long_break_included else 1
+
+    exact_candidates.sort(
+        key=lambda x: (
+            long_break_priority(x),
+            x.total_minutes,
+            x.study_minutes,
+        )
+    )
+    under_candidates.sort(
+        key=lambda x: (
+            long_break_priority(x),
+            abs(x.difference_minutes),
+            x.total_minutes,
+        )
+    )
+    over_candidates.sort(
+        key=lambda x: (
+            long_break_priority(x),
+            x.difference_minutes,
+            x.total_minutes,
+        )
+    )
+
+    # 6세션 이상인데 긴 휴식 없는 exact는 추천에서 제외
+    exact_candidates = [
+        c for c in exact_candidates
+        if not (c.num_sessions >= 6 and not c.long_break_included)
+    ]
+
+    # under / over 중 긴 휴식 포함 후보가 하나라도 있으면 exact는 3순위
+    has_long_break_in_other_candidates = any(
+        c.long_break_included for c in (under_candidates + over_candidates)
+    )
 
     recommendations: list[PlanRecommendation] = []
     used_signatures: set[tuple] = set()
 
-    for group in (exact_candidates[:1], under_candidates[:1], over_candidates[:1]):
-        for item in group:
-            sig = (
-                item.study_minutes,
-                item.short_break_minutes,
-                item.total_minutes,
-                item.long_break_included,
-            )
-            if sig not in used_signatures:
-                recommendations.append(item)
-                used_signatures.add(sig)
+    def add_recommendation(item: PlanRecommendation) -> None:
+        sig = (
+            item.study_minutes,
+            item.short_break_minutes,
+            item.num_sessions,
+            item.total_minutes,
+            item.long_break_included,
+        )
+        if sig not in used_signatures:
+            recommendations.append(item)
+            used_signatures.add(sig)
+
+    top_exact = exact_candidates[:1]
+    top_under = under_candidates[:1]
+    top_over = over_candidates[:1]
+
+    if has_long_break_in_other_candidates:
+        for item in top_under:
+            add_recommendation(item)
+        for item in top_over:
+            add_recommendation(item)
+        for item in top_exact:
+            add_recommendation(item)
+    else:
+        for item in top_exact:
+            add_recommendation(item)
+        for item in top_under:
+            add_recommendation(item)
+        for item in top_over:
+            add_recommendation(item)
 
     for idx, recommendation in enumerate(recommendations, start=1):
         recommendation.rank = idx
