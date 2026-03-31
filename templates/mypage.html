@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>마이페이지 - Toti</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      background: #f5f5f5;
+      font-family: sans-serif;
+      padding: 40px 0;
+    }
+
+    .card {
+      background: #ffffff;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      padding: 40px 36px;
+      width: 400px;
+      box-shadow: 2px 2px 8px rgba(0,0,0,0.1);
+    }
+
+    h1 {
+      font-size: 1.6em;
+      color: #333;
+      margin-bottom: 28px;
+      text-align: center;
+    }
+
+    .level-box {
+      background: #fdecea;
+      border: 1px solid #e57373;
+      border-radius: 6px;
+      padding: 14px 16px;
+      margin-bottom: 20px;
+      text-align: center;
+    }
+
+    .level-title {
+      font-size: 0.85em;
+      color: #e57373;
+      margin-bottom: 4px;
+    }
+
+    .level-value {
+      font-size: 1.8em;
+      font-weight: bold;
+      color: #e57373;
+      margin-bottom: 10px;
+    }
+
+    .exp-text {
+      font-size: 0.85em;
+      color: #777;
+      margin-bottom: 6px;
+    }
+
+    .progress-bar-wrap {
+      background: #f0f0f0;
+      border-radius: 999px;
+      height: 10px;
+      overflow: hidden;
+    }
+
+    .progress-bar {
+      height: 100%;
+      background: #e57373;
+      border-radius: 999px;
+      transition: width 0.4s ease;
+    }
+
+    .info-group {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 0;
+      border-bottom: 1px solid #eee;
+    }
+
+    .info-label {
+      font-size: 0.9em;
+      color: #777;
+    }
+
+    .info-value {
+      font-size: 1em;
+      color: #333;
+      font-weight: bold;
+    }
+
+    .menu-btn {
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 14px 0;
+      border: none;
+      border-bottom: 1px solid #eee;
+      background: none;
+      cursor: pointer;
+      font-size: 1em;
+      color: #333;
+      transition: color 0.2s;
+    }
+
+    .menu-btn:hover {
+      color: #e57373;
+    }
+
+    .menu-btn .arrow {
+      font-size: 0.85em;
+      color: #aaa;
+      transition: transform 0.2s;
+    }
+
+    .menu-btn.open .arrow {
+      transform: rotate(90deg);
+    }
+
+    .stats-panel {
+      display: none;
+      background: #f9f9f9;
+      border: 1px solid #eee;
+      border-radius: 6px;
+      padding: 14px 16px;
+      margin-top: 6px;
+      margin-bottom: 6px;
+    }
+
+    .stats-panel.open {
+      display: block;
+    }
+
+    .tab-group {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 14px;
+    }
+
+    .tab-btn {
+      flex: 1;
+      padding: 7px 0;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      background: #fff;
+      font-size: 0.85em;
+      cursor: pointer;
+      color: #555;
+      transition: background 0.2s, color 0.2s;
+    }
+
+    .tab-btn.active {
+      background: #e57373;
+      color: white;
+      border-color: #e57373;
+    }
+
+    .tab-btn:hover:not(.active) {
+      background: #fdecea;
+    }
+
+    .chart-wrap {
+      position: relative;
+      height: 180px;
+    }
+
+    .stats-loading {
+      text-align: center;
+      color: #aaa;
+      font-size: 0.85em;
+      padding: 20px 0;
+    }
+
+    .settings-panel {
+      display: none;
+      background: #f9f9f9;
+      border: 1px solid #eee;
+      border-radius: 6px;
+      padding: 14px 16px;
+      margin-top: 6px;
+      margin-bottom: 6px;
+    }
+
+    .settings-panel.open {
+      display: block;
+    }
+
+    .settings-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid #eee;
+      font-size: 0.9em;
+      color: #555;
+    }
+
+    .settings-item:last-of-type {
+      border-bottom: none;
+    }
+
+    .settings-item span:last-child {
+      font-weight: bold;
+      color: #333;
+    }
+
+    .edit-btn {
+      width: 100%;
+      padding: 10px;
+      margin-top: 12px;
+      background: #e57373;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 0.9em;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .edit-btn:hover {
+      background: #ef9a9a;
+    }
+
+    .btn-logout {
+      width: 100%;
+      padding: 12px;
+      background: #f0f0f0;
+      color: #e57373;
+      border: 1px solid #e57373;
+      border-radius: 6px;
+      font-size: 0.95em;
+      cursor: pointer;
+      margin-top: 20px;
+      transition: background 0.2s;
+    }
+
+    .btn-logout:hover {
+      background: #fdecea;
+    }
+
+    .loading {
+      text-align: center;
+      color: #aaa;
+      font-size: 0.95em;
+      padding: 20px 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>마이페이지</h1>
+
+    <div id="user-info">
+      <div class="loading">불러오는 중...</div>
+    </div>
+
+    <button class="btn-logout" id="logout-btn">로그아웃</button>
+  </div>
+
+  <script>
+    const token = localStorage.getItem("access_token");
+
+    if (!token) {
+      alert("로그인이 필요합니다.");
+      window.location.href = "/users/login-page";
+    }
+
+    let chartInstance = null;
+
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = today.getMonth() + 1;
+    const dd = today.getDate();
+
+    function getWeekNumber(d) {
+      const date = new Date(d);
+      date.setHours(0, 0, 0, 0);
+      date.setDate(date.getDate() + 3 - (date.getDay() + 6) % 7);
+      const week1 = new Date(date.getFullYear(), 0, 4);
+      return 1 + Math.round(((date - week1) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7);
+    }
+
+    const currentWeek = getWeekNumber(today);
+
+    async function loadStats(tab) {
+      document.querySelectorAll(".tab-btn").forEach(btn => {
+        btn.classList.toggle("active", btn.dataset.tab === tab);
+      });
+
+      document.getElementById("chart-area").innerHTML = `
+        <div class="stats-loading">불러오는 중...</div>
+      `;
+
+      let labels = [];
+      let values = [];
+
+      try {
+        if (tab === "daily") {
+          const url = `/stats/daily?target_date=${yyyy}-${String(mm).padStart(2,"0")}-${String(dd).padStart(2,"0")}`;
+          const res = await fetch(url, { headers: { "Authorization": `Bearer ${token}` } });
+          const data = await res.json();
+          labels = ["오늘"];
+          // null 또는 total_minutes 없을 때 0으로 처리
+          values = [data && data.total_minutes ? data.total_minutes : 0];
+
+        } else if (tab === "weekly") {
+          const url = `/stats/weekly?year=${yyyy}&week=${currentWeek}`;
+          const res = await fetch(url, { headers: { "Authorization": `Bearer ${token}` } });
+          const data = await res.json();
+          labels = data.map(d => d.date);
+          values = data.map(d => d.total_minutes ?? 0);
+
+        } else if (tab === "monthly") {
+          const url = `/stats/monthly?year=${yyyy}&month=${mm}`;
+          const res = await fetch(url, { headers: { "Authorization": `Bearer ${token}` } });
+          const data = await res.json();
+          labels = data.map(d => d.date);
+          values = data.map(d => d.total_minutes ?? 0);
+
+        } else if (tab === "yearly") {
+          const url = `/stats/yearly?year=${yyyy}`;
+          const res = await fetch(url, { headers: { "Authorization": `Bearer ${token}` } });
+          const data = await res.json();
+          labels = data.map(d => d.date);
+          values = data.map(d => d.total_minutes ?? 0);
+        }
+
+        // 데이터 없을 때
+        if (values.length === 0 || values.every(v => v === 0)) {
+          document.getElementById("chart-area").innerHTML = `
+            <div class="stats-loading">데이터가 없습니다.</div>
+          `;
+          return;
+        }
+
+        document.getElementById("chart-area").innerHTML = `
+          <div class="chart-wrap"><canvas id="stats-chart"></canvas></div>
+        `;
+
+        if (chartInstance) chartInstance.destroy();
+
+        const ctx = document.getElementById("stats-chart").getContext("2d");
+        chartInstance = new Chart(ctx, {
+          type: "bar",
+          data: {
+            labels: labels,
+            datasets: [{
+              label: "학습 시간 (분)",
+              data: values,
+              backgroundColor: "#e57373",
+              borderRadius: 4,
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false }
+            },
+            scales: {
+              y: {
+                beginAtZero: true,
+                ticks: { font: { size: 11 } }
+              },
+              x: {
+                ticks: { font: { size: 11 } }
+              }
+            }
+          }
+        });
+
+      } catch (err) {
+        console.error("통계 불러오기 실패", err);
+        document.getElementById("chart-area").innerHTML = `
+          <div class="stats-loading">통계를 불러올 수 없습니다.</div>
+        `;
+      }
+    }
+
+    async function loadMypage() {
+      try {
+        const res = await fetch("/users/mypage", {
+          headers: { "Authorization": `Bearer ${token}` }
+        });
+
+        if (res.status === 401) {
+          alert("로그인이 필요합니다.");
+          window.location.href = "/users/login-page";
+          return;
+        }
+
+        const data = await res.json();
+        const expInLevel = data.experience % 100;
+
+        document.getElementById("user-info").innerHTML = `
+          <div class="level-box">
+            <div class="level-title">현재 레벨</div>
+            <div class="level-value">Lv. ${data.level}</div>
+            <div class="exp-text">경험치 ${expInLevel} / 100</div>
+            <div class="progress-bar-wrap">
+              <div class="progress-bar" style="width: ${expInLevel}%"></div>
+            </div>
+          </div>
+
+          <div class="info-group">
+            <span class="info-label">이메일</span>
+            <span class="info-value">${data.email}</span>
+          </div>
+          <div class="info-group">
+            <span class="info-label">닉네임</span>
+            <span class="info-value">${data.nickname}</span>
+          </div>
+
+          <button class="menu-btn" id="timer-btn">
+            <span>타이머로 이동</span>
+            <span class="arrow">▶</span>
+          </button>
+
+          <button class="menu-btn" id="stats-toggle-btn">
+            <span>통계 보기</span>
+            <span class="arrow">▶</span>
+          </button>
+          <div class="stats-panel" id="stats-panel">
+            <div class="tab-group">
+              <button class="tab-btn active" data-tab="daily">일별</button>
+              <button class="tab-btn" data-tab="weekly">주간</button>
+              <button class="tab-btn" data-tab="monthly">월간</button>
+              <button class="tab-btn" data-tab="yearly">연간</button>
+            </div>
+            <div id="chart-area">
+              <div class="stats-loading">탭을 선택하세요.</div>
+            </div>
+          </div>
+
+          <button class="menu-btn" id="settings-toggle-btn">
+            <span>설정</span>
+            <span class="arrow">▶</span>
+          </button>
+          <div class="settings-panel" id="settings-panel">
+            <div class="settings-item">
+              <span>목표 시간</span>
+              <span>${data.goal_minutes}분</span>
+            </div>
+            <div class="settings-item">
+              <span>기본 집중 시간</span>
+              <span>${data.default_focus_time}분</span>
+            </div>
+            <div class="settings-item">
+              <span>기본 휴식 시간</span>
+              <span>${data.default_break_time}분</span>
+            </div>
+            <div class="settings-item">
+              <span>AI 모드</span>
+              <span>${data.ai_mode || "-"}</span>
+            </div>
+            <button class="edit-btn" id="go-settings-btn">설정 수정하기</button>
+          </div>
+        `;
+
+        document.getElementById("timer-btn").addEventListener("click", () => {
+          window.location.href = "/timer";
+        });
+
+        const statsToggleBtn = document.getElementById("stats-toggle-btn");
+        const statsPanel = document.getElementById("stats-panel");
+
+        statsToggleBtn.addEventListener("click", () => {
+          statsToggleBtn.classList.toggle("open");
+          statsPanel.classList.toggle("open");
+          if (statsPanel.classList.contains("open")) {
+            loadStats("daily");
+          }
+        });
+
+        statsPanel.addEventListener("click", (e) => {
+          if (e.target.classList.contains("tab-btn")) {
+            loadStats(e.target.dataset.tab);
+          }
+        });
+
+        const settingsToggleBtn = document.getElementById("settings-toggle-btn");
+        const settingsPanel = document.getElementById("settings-panel");
+
+        settingsToggleBtn.addEventListener("click", () => {
+          settingsToggleBtn.classList.toggle("open");
+          settingsPanel.classList.toggle("open");
+        });
+
+        document.getElementById("go-settings-btn").addEventListener("click", () => {
+          window.location.href = "/users/settings-page";
+        });
+
+      } catch (err) {
+        console.error("마이페이지 불러오기 실패", err);
+        alert("서버와 연결할 수 없습니다.");
+      }
+    }
+
+    loadMypage();
+
+    document.getElementById("logout-btn").addEventListener("click", () => {
+      localStorage.removeItem("access_token");
+      window.location.href = "/users/login-page";
+    });
+  </script>
+</body>
+</html>

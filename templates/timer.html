@@ -1,0 +1,1624 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>Pomodoro Timer</title>
+  <style>
+    body {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      background: #f5f5f5;
+    }
+
+    .timer-container {
+      position: relative;
+      width: 300px;
+      height: 300px;
+      margin-bottom: 20px;
+    }
+
+    /* 원형 진행바 (SVG) */
+    .circle {
+      position: absolute;
+      top: 0;
+      left: 0;
+    }
+
+    #focus-circle{
+      fill: none;
+      stroke-width: 40;
+      stroke-linecap: round;
+      transform: rotate(-90deg);
+      transform-origin: 50% 50%;
+      transition: stroke-dashoffset 1s linear; /* 부드럽게 변화 */
+      stroke: red;
+    }
+
+    #break-circle {
+      fill: none;
+      stroke-width: 20;
+      stroke-linecap: round;
+      transform: rotate(-90deg);
+      transform-origin: 50% 50%;
+      transition: stroke-dashoffset 1s linear; /* 부드럽게 변화 */
+      stroke: green;
+    }
+
+    /* 중앙 박스 */
+    .time-box {
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      background: #d0d0d0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .counter {
+      font-size: 1.2em;
+      color: black;
+      margin-bottom: 10px;
+      font-weight: normal;
+    }
+
+    .big-time {
+      font-size: 2em;
+      font-weight: bold;
+      color: black;
+    }
+
+    .small-time {
+      font-size: 1.2em;
+      color: black;
+      margin-top: 10px;
+    }
+
+    /* 하단 바 전체 */
+    .bottom-bar {
+      display: flex;
+      justify-content: space-between; /* 왼쪽은 inputs, 오른쪽은 버튼 */
+      align-items: center;
+      width: 800px; /* 가로 길이 확장 */
+      margin-top: 50px; /* 타이머와 간격 확보 */
+      padding: 15px 20px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      background: #f9f9f9;
+    }
+
+    /* 입력 박스 */
+    .inputs {
+      display: flex;
+      gap: 15px;
+      font-size: 1.5em; /* 글자 크기 확대 */
+    }
+
+    .inputs input {
+      width: 90px;
+      font-size: 1.2em;
+      text-align: center;
+    }
+
+    /* 버튼 */
+    .controls {
+      display: flex;
+      flex-direction: row; /* 버튼 가로 정렬 */
+      gap: 10px;
+    }
+
+    .controls button {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      width: 50px;   /* 버튼 크기 고정 */
+      height: 50px;  /* 버튼 크기 고정 */
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      background: #f0f0f0;
+      cursor: pointer;
+      transition: background 0.2s ease;
+    }
+
+    .controls button:hover {
+      background: #e0e0e0;
+    }
+
+    .controls svg {
+      width: 24px;   /* 아이콘 크기 고정 */
+      height: 24px;
+      fill: #333;
+    }
+
+    /* 여기서부턴 메모 */
+    .memo-box {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      width: 300px;
+      height: 400px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      background: #ffffff;
+      box-shadow: 2px 2px 8px rgba(0,0,0,0.2);
+      resize: both;
+      overflow: hidden;
+      z-index: 1000;
+      display: none; /* 기본은 닫혀 있음 */
+    }
+
+    .memo-header {
+      background: #f0f0f0;
+      padding: 6px 10px;
+      cursor: move;
+      font-weight: bold;
+      border-bottom: 1px solid #ccc;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .memo-header button {
+      background: #4caf50;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      width: 24px;
+      height: 24px;
+      cursor: pointer;
+    }
+
+    .memo-content {
+      padding: 10px;
+      height: calc(100% - 40px);
+      overflow-y: auto;
+    }
+
+    .memo-item {
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      margin-bottom: 8px;
+    }
+
+    .memo-title {
+      background: #eee;
+      padding: 6px;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .memo-title span {
+      flex-grow: 1;
+    }
+
+    .memo-actions {
+      display: flex;
+      gap: 6px;
+    }
+
+    .memo-actions button {
+      background: none;
+      border: none;
+      cursor: pointer;
+    }
+
+    .memo-body {
+      display: none;
+      padding: 6px;
+      background: #fafafa;
+    }
+
+    .memo-title span.placeholder,
+    .memo-body.placeholder {
+      color: #999; /* 회색 계열 */
+      font-style: italic;
+    }
+
+    /* 우측 상단 버튼 관련 */
+
+    .top-right-buttons {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      display: flex;
+      flex-direction: column; /* 세로 정렬 */
+      gap: 12px;              /* 버튼 간격 */
+      z-index: 2000;
+    }
+
+    .circle-btn {
+      width: 50px;
+      height: 50px;
+      border-radius: 50%;
+      border: none;
+      background: #e57373; /* 토마토 느낌의 붉은색 */
+      box-shadow: 2px 2px 6px rgba(0,0,0,0.2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .circle-btn:hover {
+      background: #ef9a9a; /* hover 시 조금 더 밝은 톤 */
+    }
+
+    .circle-btn svg {
+      width: 24px;
+      height: 24px;
+      fill: white; /* 아이콘은 흰색으로 대비 */
+    }
+
+
+    /* bgm 박스 */
+    .bgm-box {
+    position: fixed;
+    top: 100px;
+    left: 100px;
+    width: 300px;
+    height: 400px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    background: #fff;
+    box-shadow: 2px 2px 8px rgba(0,0,0,0.2);
+    z-index: 1000;
+    display: none; /* 기본은 닫혀 있음 */
+  }
+
+  .bgm-header {
+    background: #f0f0f0;
+    padding: 6px 10px;
+    cursor: move;
+    font-weight: bold;
+    border-bottom: 1px solid #ccc;
+  }
+
+  .bgm-progress {
+    display: flex;
+    flex-direction: column;
+    padding: 10px;
+  }
+
+  #progress-bar {
+    width: 100%;
+    cursor: pointer;
+  }
+
+  .time-display {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.9em;
+    margin-top: 4px;
+  }
+
+  .bgm-controls {
+    display: flex;
+    justify-content: space-around;
+    padding: 10px;
+  }
+
+  .track-list {
+    height: calc(100% - 80px);
+    overflow-y: auto;
+    padding: 10px;
+  }
+
+  .track-list div {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+
+/* 셔플 */
+#shuffle-btn {
+  position: relative; /* ::after 기준점 */
+  font-size: 24px;
+  background: #f0f0f0; /* 원하는 배경색 */
+  border: 1px solid #ccc; /* 원하는 테두리 */
+  border-radius: 6px;     /* 둥글게 하고 싶으면 */
+  cursor: pointer;
+}
+
+#shuffle-btn.off::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: black; /* 선 색상 */
+  transform: rotate(-45deg);
+}
+
+/* 반복버튼 */
+#repeat-btn {
+  position: relative;
+  font-size: 24px;
+  background: #f0f0f0;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+#repeat-btn.off::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: black; /* 검은색 사선 */
+  transform: rotate(-45deg);
+}
+
+.track-item {
+  display: flex;
+  align-items: center;
+  padding: 6px;
+  border: 1px solid #ccc;
+  margin-bottom: 4px;
+  background: #fff;
+  transition: transform 0.2s ease; /* 부드럽게 밀려나는 효과 */
+}
+
+.drag-handle {
+  cursor: grab;
+  user-select: none;
+  margin-right: 8px;
+}
+
+.dragging {
+  opacity: 0.5;
+}
+
+.favorite {
+  cursor: pointer;   /* 별표 클릭 시 손 모양 */
+}
+
+.track-item input[type="checkbox"] {
+  cursor: pointer;   /* 체크박스도 손 모양 */
+}
+  </style>
+</head>
+<body>
+  <!-- 메모 관련 -->
+  <div id="memo-box" class="memo-box">
+    <div id="memo-header" class="memo-header">
+      메모
+      <button id="add-memo-btn">+</button>
+    </div>
+    <div id="memo-content" class="memo-content">
+      <!-- 메모 항목들이 여기에 추가됨 -->
+    </div>
+  </div>
+
+<!-- bgm 관련 -->
+  <div id="bgm-box" class="bgm-box" style="display:none;">
+    <div id="bgm-header" class="bgm-header">
+      플레이어
+    </div>
+
+  <!-- 재생바 -->
+  <div class="bgm-progress">
+    <input type="range" id="progress-bar" value="0" min="0" max="100">
+    <div class="time-display">
+      <span id="current-time">0:00</span>
+      <span id="total-time">0:00</span>
+    </div>
+  </div>
+
+    <!-- 재생 컨트롤 바 -->
+    <div class="bgm-controls">
+      <button id="shuffle-btn">🔀</button>
+      <button id="prev-btn">⏮</button>
+      <button id="play-btn">▶</button>
+      <button id="pause-btn" style="display:none;">⏸</button>
+      <button id="next-btn">⏭</button>
+      <button id="repeat-btn">🔁</button>
+    </div>
+
+    <!-- 트랙 리스트 -->
+    <div id="track-list" class="track-list">
+      <!-- timer.py의 load_tracks 결과가 여기에 들어감 -->
+    </div>
+  </div>
+
+
+  <!-- 우측 상단 버튼 -->
+  <div class="top-right-buttons">
+    <!-- 마이페이지 버튼 -->
+    <button class="circle-btn" id="mypage-btn">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+        <path d="M12 12c2.7 0 5-2.3 5-5s-2.3-5-5-5-5 
+                2.3-5 5 2.3 5 5 5zm0 2c-3.3 0-10 1.7-10 
+                5v3h20v-3c0-3.3-6.7-5-10-5z"/>
+      </svg>
+    </button>
+
+    <!-- 캘린더 버튼 -->
+    <button class="circle-btn" id="calendar-btn">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+        <path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.1 0-2 
+                .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 
+                2-.9 2-2V6c0-1.1-.9-2-2-2zm0 
+                16H5V9h14v11z"/>
+      </svg>
+    </button>
+
+    <!-- 메모 버튼 -->
+    <button class="circle-btn" id="memo-btn">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+        <path d="M3 4v16h18V4H3zm16 14H5V6h14v12zM7 
+                8h10v2H7V8zm0 4h10v2H7v-2z"/>
+      </svg>
+    </button>
+
+    <!-- BGM 버튼 -->
+    <button class="circle-btn" id="bgm-btn">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+        <path d="M12 3v10.55A4 4 0 1 0 14 
+                17V7h4V3h-6z"/>
+      </svg>
+    </button>
+
+    <!-- 로그인/로그아웃 버튼 -->
+    <button class="circle-btn" id="login-btn">
+      <!-- 기본은 로그인 아이콘 -->
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+        <path d="M10 17l5-5-5-5v10zm9-12H9c-1.1 
+                0-2 .9-2 2v3h2V7h10v10H9v-3H7v3c0 
+                1.1.9 2 2 2h10c1.1 0 2-.9 
+                2-2V7c0-1.1-.9-2-2-2z"/>
+      </svg>
+    </button>
+  </div>
+  
+  <!-- 타이머 및 관련 버튼 -->
+  <div class="timer-container">
+    <!-- 집중 타이머 (빨간색 원형) -->
+    <svg class="circle" width="300" height="300">
+      <circle id="focus-circle" cx="150" cy="150" r="100" />
+    </svg>
+
+    <!-- 휴식 타이머 (녹색 원형) -->
+    <svg class="circle" width="300" height="300">
+      <circle id="break-circle" cx="150" cy="150" r="90" />
+    </svg>
+
+    <div class="time-box">
+      <div class="counter" id="counter">0/4</div>
+      <div class="big-time" id="focus-time">25:00</div>
+      <div class="small-time" id="break-time">05:00</div>
+    </div>
+  </div>
+
+
+<!-- 하단 입력 + 버튼을 한 줄로 -->
+<div class="bottom-bar">
+  <div class="inputs">
+    <label>집중 <input type="number" id="focus-input" value="25"></label>
+    <label>휴식 <input type="number" id="break-input" value="5"></label>
+    <label>횟수 <input type="number" id="count-input" value="4"></label>
+  </div>
+  <div class="controls">
+    <!-- 재생 버튼 -->
+    <button id="start-btn">
+      <svg id="start-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+        <path d="M8 5v14l11-7z"/> <!-- ▶ 아이콘 -->
+      </svg>
+    </button>
+
+    <!-- 정지 버튼 -->
+    <button id="stop-btn">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+        <rect x="6" y="6" width="12" height="12"/> <!-- ■ 아이콘 -->
+      </svg>
+    </button>
+  </div>
+</div>
+
+  <script>
+    let focusTime = 25;
+    let breakTime = 5;
+    let totalCount;
+    let currentCount = 0;
+    let timer = null;
+    let isRunning = false;
+    let isPaused = false;
+    let isFocus = true;
+    let remainingTime;
+
+    const focusDisplay = document.getElementById("focus-time");
+    const breakDisplay = document.getElementById("break-time");
+    const counterDisplay = document.getElementById("counter");
+    const startBtn = document.getElementById("start-btn");
+    const stopBtn = document.getElementById("stop-btn");
+
+    const focusCircle = document.getElementById("focus-circle");
+    const breakCircle = document.getElementById("break-circle");
+    const memoContent = document.getElementById("memo-content");
+    // 원 둘레 계산
+    const focusCircumference = 2 * Math.PI * 100; // r=100
+    const breakCircumference = 2 * Math.PI * 90;  // r=90
+
+
+
+async function loadMemos() {
+  try {
+    const token = localStorage.getItem("access_token");
+
+    const res = await fetch("/timer/api/memos", {
+      headers: {
+        "Authorization": `Bearer ${token}`
+      }
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+
+    memoContent.innerHTML = "";
+
+    data.memos.forEach(m => {
+      const memoItem = document.createElement("div");
+      memoItem.className = "memo-item";
+      memoItem.dataset.id = m.id; // id 저장
+
+      memoItem.innerHTML = `
+        <div class="memo-title">
+          <span>${m.title}</span>
+          <div class="memo-actions">
+            <button class="edit-btn">✏️</button>
+            <button class="delete-btn">🗑️</button>
+          </div>
+        </div>
+        <div class="memo-body" style="display:none;">불러오기 전 내용...</div>
+      `;
+
+      memoContent.appendChild(memoItem);
+
+      // 서버 메모는 placeholder 적용 X
+      attachMemoEvents(memoItem, false);
+    });
+  } catch (err) {
+    console.error("메모 불러오기 실패", err);
+  }
+}
+
+    focusCircle.style.strokeDasharray = focusCircumference;
+    focusCircle.style.strokeDashoffset = focusCircumference;
+
+    breakCircle.style.strokeDasharray = breakCircumference;
+    breakCircle.style.strokeDashoffset = breakCircumference;
+
+    /* ▶ 아이콘 */
+    function setPlayIcon() {
+      startBtn.innerHTML = `
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+          <path d="M8 5v14l11-7z"/>
+        </svg>`;
+    }
+
+    /* ⏸ 아이콘 */
+    function setPauseIcon() {
+      startBtn.innerHTML = `
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+          <path d="M6 19h4V5H6zm8-14v14h4V5z"/>
+        </svg>`;
+    }
+
+    // 시간 포맷 함수
+    function formatTime(seconds) {
+      const m = String(Math.floor(seconds / 60)).padStart(2, "0");
+      const s = String(seconds % 60).padStart(2, "0");
+      return `${m}:${s}`;
+    }
+    
+    // 입력창 변수 선언 (아랫부분에서 추가)
+    const focusInput = document.getElementById("focus-input");
+    const breakInput = document.getElementById("break-input");
+    const countInput = document.getElementById("count-input");
+
+
+    // 표시 업데이트 함수
+    function updateDisplays() {
+      focusTime = parseInt(focusInput.value) || 0;
+      breakTime = parseInt(breakInput.value) || 0;
+      totalCount = parseInt(countInput.value) || 0;
+      currentCount = 0;
+
+      focusDisplay.textContent = formatTime(focusTime * 60);
+      breakDisplay.textContent = formatTime(breakTime * 60);
+      counterDisplay.textContent = `${currentCount}/${totalCount}`;
+    }
+
+    // 입력값 변경 시 즉시 반영
+    focusInput.addEventListener("input", updateDisplays);
+    breakInput.addEventListener("input", updateDisplays);
+    countInput.addEventListener("input", updateDisplays);
+
+    // 서버에서 값 가져오기
+    async function loadTimerData() {
+      try {
+        const token = localStorage.getItem("access_token");
+        const res = await fetch("/timer/api/timer-data", {
+          headers: { "Authorization": `Bearer ${token}` }
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+
+        // 서버 값 반영
+        focusTime = data.focus_time;
+        breakTime = data.break_time;
+
+        // 입력창에 값 넣기
+        document.getElementById("focus-input").value = focusTime;
+        document.getElementById("break-input").value = breakTime;
+
+        // 표시 업데이트 호출
+        updateDisplays();
+      } catch (err) {
+        console.error("타이머 데이터 불러오기 실패", err);
+      }
+    }
+
+    // 초기 표시
+    updateDisplays();
+
+    // 페이지 로드 시 서버 값 불러오기
+    loadTimerData();
+
+    function updateProgress() {
+      if (isFocus) {
+        const progress = remainingTime / (focusTime * 60);
+        focusCircle.style.strokeDashoffset = focusCircumference * progress;
+      } else {
+        const progress = remainingTime / (breakTime * 60);
+        breakCircle.style.strokeDashoffset = breakCircumference * progress;
+      }
+    }
+
+    function startTimer() {
+      if (!isRunning) {
+        startedAt = new Date(); // 시작 시각 기록
+        // 처음 시작
+        focusTime = parseInt(document.getElementById("focus-input").value);
+        breakTime = parseInt(document.getElementById("break-input").value);
+        totalCount = parseInt(document.getElementById("count-input").value);
+        currentCount = 0;
+        isFocus = true;
+        remainingTime = focusTime * 60;
+        updateDisplays();
+        runInterval();
+        isRunning = true;
+        isPaused = false;
+        setPauseIcon(); // ▶ → ⏸
+      } else if (!isPaused) {
+        // 실행 중 → 일시정지
+        clearInterval(timer);
+        timer = null;
+        isPaused = true;
+        setPlayIcon(); // ⏸ → ▶
+      } else {
+        // 일시정지 상태 → 재개
+        runInterval();
+        isPaused = false;
+        setPauseIcon(); // ▶ → ⏸
+      }
+    }
+
+    function runInterval() {
+      timer = setInterval(runTimer, 1000);
+    }
+
+    function runTimer() {
+      remainingTime--;
+      if (isFocus) {
+        focusDisplay.textContent = formatTime(remainingTime);
+      } else {
+        breakDisplay.textContent = formatTime(remainingTime);
+      }
+
+      updateProgress(); // 진행률 업데이트
+
+      if (remainingTime <= 0) {
+        if (isFocus) {
+          currentCount++;
+          counterDisplay.textContent = `${currentCount}/${totalCount}`;
+          if (currentCount >= totalCount) {
+            stopTimer(); // 종료
+            return;
+          }
+          isFocus = false;
+          remainingTime = breakTime * 60;
+        } else {
+          isFocus = true;
+          remainingTime = focusTime * 60;
+        }
+      }
+    }
+
+    function stopTimer(isStoppedEarly = true) {
+      clearInterval(timer);
+      timer = null;
+      isRunning = false;
+      isPaused = false;
+
+      const endedAt = new Date(); // 종료 시각 기록
+
+      // duration = 집중 시간 × 횟수 (분 단위)
+      let duration = focusTime * totalCount;
+
+      // exp = 집중 × 횟수 + 휴식 × (횟수 - 1)
+      let exp = focusTime * totalCount + breakTime * (totalCount - 1);
+
+      // 중간 정지라면 진행된 시간만 exp 반영
+      if (isStoppedEarly) {
+        const totalSeconds = (focusTime * 60 * totalCount) + (breakTime * 60 * (totalCount - 1));
+        const elapsedSeconds = totalSeconds - remainingTime;
+        exp = Math.floor(elapsedSeconds / 60);
+
+        // duration도 반영
+        const elapsedFocusSeconds = Math.min(elapsedSeconds, focusTime * 60 * totalCount);
+        duration = Math.floor(elapsedFocusSeconds / 60);
+      }
+
+      sendSessionEnd(startedAt, endedAt, duration, exp);
+
+      currentCount = 0;
+      updateDisplays();
+      setPlayIcon();
+      focusCircle.style.strokeDashoffset = focusCircumference;
+      breakCircle.style.strokeDashoffset = breakCircumference;
+    }
+
+    startBtn.addEventListener("click", startTimer);
+    stopBtn.addEventListener("click", stopTimer);
+
+    /* 초기 상태: ▶ 아이콘 */
+    setPlayIcon();
+
+    // 우상단 버튼들
+
+    // 버튼 요소 가져오기
+    const mypageBtn = document.querySelector(".top-right-buttons .circle-btn:nth-child(1)");
+    const calendarBtn = document.querySelector(".top-right-buttons .circle-btn:nth-child(2)");
+    const memoToggleBtn = document.querySelector(".top-right-buttons .circle-btn:nth-child(3)");
+    const memoBox = document.getElementById("memo-box");
+
+// 공통 로그인 체크 함수
+async function ensureLogin() {
+  try {
+    const token = localStorage.getItem("access_token");
+    if (!token) {
+      const goLogin = confirm("로그인이 필요합니다");
+      if (goLogin) window.location.href = "/users/login-page";
+      return false;
+    }
+
+    const res = await fetch("/timer/api/timer-data", {
+      headers: {
+        "Authorization": `Bearer ${token}`
+      }
+    });
+
+    if (!res.ok) {
+      const goLogin = confirm("로그인이 필요합니다");
+      if (goLogin) window.location.href = "/users/login-page";
+      return false;
+    }
+
+    return true; // 로그인 성공
+  } catch (err) {
+    console.error("서버 연결 실패", err);
+    alert("서버와 연결할 수 없습니다.");
+    return false;
+  }
+}
+
+    // 마이페이지 버튼
+    mypageBtn.addEventListener("click", async () => {
+      const loggedIn = await ensureLogin();
+      if (!loggedIn) return;
+      window.location.href = "/users/mypage-page";
+    });
+
+    // 캘린더 버튼
+    calendarBtn.addEventListener("click", async () => {
+      const loggedIn = await ensureLogin();
+      if (!loggedIn) return;
+      window.location.href = "/calendar";
+    });
+
+    // 메모 버튼
+    memoToggleBtn.addEventListener("click", async () => {
+      const loggedIn = await ensureLogin();
+      if (!loggedIn) return;
+
+      // 로그인된 상태 → 메모 박스 토글
+      if (memoBox.style.display === "none" || memoBox.style.display === "") {
+        memoBox.style.display = "block";
+        loadMemos(); // 박스 열릴 때 메모 목록 불러오기
+      } else {
+        memoBox.style.display = "none";
+      }
+    });
+
+    // // 비 로그인 테스트용
+    // memoToggleBtn.addEventListener("click", () => {
+    //   if (memoBox.style.display === "none" || memoBox.style.display === "") {
+    //     memoBox.style.display = "block"; // 열기
+    //   } else {
+    //     memoBox.style.display = "none";  // 닫기
+    //   }
+    // });
+
+    // 여기서부터는 메모
+    const memoHeader = document.getElementById("memo-header");
+
+
+    let isDragging = false;
+    let offsetX, offsetY;
+
+
+
+    memoHeader.addEventListener("mousedown", (e) => {
+      isDragging = true;
+      offsetX = e.clientX - memoBox.offsetLeft;
+      offsetY = e.clientY - memoBox.offsetTop;
+    });
+
+    document.addEventListener("mousemove", (e) => {
+      if (isDragging) {
+        memoBox.style.left = (e.clientX - offsetX) + "px";
+        memoBox.style.top = (e.clientY - offsetY) + "px";
+      }
+    });
+
+    document.addEventListener("mouseup", () => {
+      isDragging = false;
+    });
+
+
+
+    const addMemoBtn = document.getElementById("add-memo-btn");
+
+    // 메모 추가
+    addMemoBtn.addEventListener("click", () => {
+      const memoItem = document.createElement("div");
+      memoItem.className = "memo-item";
+
+      memoItem.innerHTML = `
+        <div class="memo-title">
+          <span>새 메모 제목</span>
+          <div class="memo-actions">
+            <button class="edit-btn">✏️</button>
+            <button class="delete-btn">🗑️</button>
+          </div>
+        </div>
+        <div class="memo-body">메모 내용을 입력하세요...</div>
+      `;
+
+      memoContent.appendChild(memoItem);
+
+      attachMemoEvents(memoItem);
+
+      // 새 메모는 바로 편집 모드로 시작
+      const editBtn = memoItem.querySelector(".edit-btn");
+      editBtn.click();
+    });
+
+
+// 메모 이벤트 연결
+function attachMemoEvents(memoItem, isNew = true) {
+  const title = memoItem.querySelector(".memo-title span");
+  const body = memoItem.querySelector(".memo-body");
+  const editBtn = memoItem.querySelector(".edit-btn");
+  const deleteBtn = memoItem.querySelector(".delete-btn");
+
+  if (isNew) {
+    setPlaceholder(title, "새 메모 제목");
+    setPlaceholder(body, "메모 내용을 입력하세요...");
+  }
+
+  // 타이틀 클릭 → 서버 내용 불러오기 + 펼치기/접기
+  title.addEventListener("click", async () => {
+    if (editBtn.textContent === "✏️") {
+      if (body.style.display === "none" || body.style.display === "") {
+        const memoId = memoItem.dataset.id;
+        if (memoId) {
+          try {
+            const token = localStorage.getItem("access_token");
+            const res = await fetch(`/timer/memo/${memoId}`, {
+              headers: { "Authorization": `Bearer ${token}` }
+            });
+            if (res.ok) {
+              const memoData = await res.json();
+              body.textContent = memoData.content; // 서버에서 실제 내용 불러오기
+            } else {
+              console.error("메모 내용 불러오기 실패", await res.text());
+            }
+          } catch (err) {
+            console.error("메모 불러오기 실패", err);
+          }
+        }
+        body.style.display = "block";
+      } else {
+        body.style.display = "none";
+      }
+    }
+  });
+
+  // 수정 버튼
+  editBtn.addEventListener("click", async () => {
+    if (editBtn.textContent === "✏️") {
+      title.setAttribute("contenteditable", "true");
+      body.setAttribute("contenteditable", "true");
+      body.style.display = "block";
+      title.focus();
+      editBtn.textContent = "💾";
+    } else {
+      title.removeAttribute("contenteditable");
+      body.removeAttribute("contenteditable");
+      editBtn.textContent = "✏️";
+      body.style.display = "block";
+
+      try {
+        const token = localStorage.getItem("access_token");
+        const res = await fetch("/timer/memo/write", {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            id: memoItem.dataset.id || null,
+            title: title.textContent,
+            content: body.textContent
+          })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          memoItem.dataset.id = data.memo.id;
+          alert("메모 저장 완료!");
+        } else {
+          alert(data.detail || "메모 저장 실패");
+        }
+      } catch (err) {
+        console.error("메모 저장 실패", err);
+      }
+    }
+  });
+
+  // 삭제 버튼
+  deleteBtn.addEventListener("click", async () => {
+    if (!confirm("정말 삭제하시겠습니까?")) return;
+    const memoId = memoItem.dataset.id;
+    if (!memoId) {
+      memoItem.remove();
+      return;
+    }
+    try {
+      const token = localStorage.getItem("access_token");
+      const res = await fetch(`/timer/memo/${memoId}`, {
+        method: "DELETE",
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (res.ok) {
+        alert("메모 삭제 완료!");
+        memoItem.remove();
+      } else {
+        alert("메모 삭제 실패");
+      }
+    } catch (err) {
+      console.error("메모 삭제 실패", err);
+    }
+  });
+
+  // Tab → body로 이동
+  title.addEventListener("keydown", (e) => {
+    if (e.key === "Tab") {
+      e.preventDefault();
+      body.focus();
+    }
+  });
+
+  // placeholder 처리
+  title.addEventListener("focus", () => clearPlaceholder(title, "새 메모 제목"));
+  title.addEventListener("blur", () => restorePlaceholder(title, "새 메모 제목"));
+  body.addEventListener("focus", () => clearPlaceholder(body, "메모 내용을 입력하세요..."));
+  body.addEventListener("blur", () => restorePlaceholder(body, "메모 내용을 입력하세요..."));
+}
+
+    // placeholder 유틸 함수
+    function setPlaceholder(el, text) {
+      el.textContent = text;
+      el.classList.add("placeholder");
+    }
+
+    function clearPlaceholder(el, text) {
+      if (el.textContent === text) {
+        el.textContent = "";
+        el.classList.remove("placeholder");
+      }
+    }
+
+    function restorePlaceholder(el, text) {
+      if (el.textContent.trim() === "") {
+        el.textContent = text;
+        el.classList.add("placeholder");
+      }
+    }
+
+  const loginBtn = document.getElementById("login-btn");
+
+// 로그인/로그아웃 버튼 상태 업데이트
+function updateLoginButton() {
+  const token = localStorage.getItem("access_token");
+  if (token) {
+    // 로그인 상태 → 로그아웃 아이콘
+    loginBtn.innerHTML = `
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+        <path d="M16 13v-2H7V7l-5 5 5 5v-4h9zm3-10H5c-1.1 
+                 0-2 .9-2 2v4h2V5h14v14H5v-4H3v4c0 
+                 1.1.9 2 2 2h14c1.1 0 2-.9 
+                 2-2V5c0-1.1-.9-2-2-2z"/>
+      </svg>
+    `;
+  } else {
+    // 로그아웃 상태 → 로그인 아이콘
+    loginBtn.innerHTML = `
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+        <path d="M10 17l5-5-5-5v10zm9-12H9c-1.1 
+                 0-2 .9-2 2v3h2V7h10v10H9v-3H7v3c0 
+                 1.1.9 2 2 2h10c1.1 0 2-.9 
+                 2-2V7c0-1.1-.9-2-2-2z"/>
+      </svg>
+    `;
+  }
+}
+
+  // 버튼 클릭 이벤트
+  loginBtn.addEventListener("click", () => {
+    const token = localStorage.getItem("access_token");
+    if (token) {
+      // 로그인 상태 → 로그아웃 확인
+      const confirmLogout = confirm("로그아웃 하시겠습니까?");
+      if (confirmLogout) {
+        localStorage.removeItem("access_token");
+        updateLoginButton();
+        alert("로그아웃 되었습니다.");
+      }
+    } else {
+      // 로그아웃 상태 → 로그인 페이지로 이동
+      window.location.href = "/users/login-page";
+    }
+  });
+
+  // 페이지 로드 시 상태 업데이트
+  updateLoginButton();
+
+async function sendSessionEnd(startedAt, endedAt, duration, exp) {
+  try {
+    const token = localStorage.getItem("access_token");
+    await fetch("/timer/api/session-end", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        started_at: startedAt.toISOString(),
+        ended_at: endedAt.toISOString(),
+        duration: duration,
+        exp: exp
+      })
+    });
+
+    // 세션 종료 후 StudyRecord 업데이트 호출
+    const targetDate = new Date().toISOString().split("T")[0]; // 오늘 날짜
+    const totalMinutes = duration; // 누적 시간 계산 로직에 맞게 수정
+    const completedSessions = 1;   // 이번 세션을 완료했으니 +1
+    const goalAchieved = false;    // 목표 달성 여부는 로직에 맞게 설정
+
+    await fetch("/sessions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        target_date: new Date().toISOString().split("T")[0], // "YYYY-MM-DD"
+        total_minutes: Number(totalMinutes),
+        completed_sessions: Number(completedSessions),
+        goal_achieved: Boolean(goalAchieved)
+      })
+    });
+
+  } catch (err) {
+    console.error("세션 종료 전송 실패", err);
+  }
+}
+
+// ==================== BGM 박스 온오프 ====================
+const bgmBox = document.getElementById("bgm-box");
+const bgmBtn = document.getElementById("bgm-btn");
+
+bgmBtn.addEventListener("click", () => {
+  if (bgmBox.style.display === "none" || bgmBox.style.display === "") {
+    bgmBox.style.display = "block";
+    loadTracks(); // 열릴 때 트랙 불러오기
+  } else {
+    bgmBox.style.display = "none";
+    stopAudio();
+  }
+});
+
+// ==================== 드래그 이동 ====================
+const bgmHeader = document.getElementById("bgm-header");
+let offsetX_bgm, offsetY_bgm, isDragging_bgm = false;
+
+bgmHeader.addEventListener("mousedown", (e) => {
+  isDragging_bgm = true;
+  offsetX_bgm = e.clientX - bgmBox.offsetLeft;
+  offsetY_bgm = e.clientY - bgmBox.offsetTop;
+});
+
+document.addEventListener("mousemove", (e) => {
+  if (isDragging_bgm) {
+    bgmBox.style.left = (e.clientX - offsetX_bgm) + "px";
+    bgmBox.style.top = (e.clientY - offsetY_bgm) + "px";
+  }
+});
+
+document.addEventListener("mouseup", () => {
+  isDragging_bgm = false;
+});
+
+// ==================== 오디오 플레이어 ====================
+let audio = null;
+let trackList = [];
+let currentIndex = null;
+let isShuffle = false;
+let repeatMode = "all"; // "all", "one", "off"
+let currentTrackId = null; // 현재 재생 중인 곡 ID
+
+// 버튼 상태 업데이트
+function updateButtons(state) {
+  // 컨트롤 영역 버튼
+  if (state === "playing") {
+    document.getElementById("play-btn").style.display = "none";
+    document.getElementById("pause-btn").style.display = "inline-block";
+  } else {
+    document.getElementById("pause-btn").style.display = "none";
+    document.getElementById("play-btn").style.display = "inline-block";
+  }
+
+  // 곡 리스트 버튼
+  const list = document.getElementById("track-list").children;
+  for (let i = 0; i < list.length; i++) {
+    const btn = list[i].querySelector("button");
+    const trackId = parseInt(list[i].getAttribute("data-id"));
+    if (trackId === currentTrackId && state === "playing") {
+      btn.textContent = "⏸";
+    } else {
+      btn.textContent = "▶";
+    }
+  }
+}
+
+function getCheckedTracks() {
+  return trackList.filter(track => track.is_checked);
+}
+
+function playTrack(index) {
+  const checkedTracks = getCheckedTracks();
+  if (checkedTracks.length === 0) return;
+
+  if (audio) audio.pause();
+  currentIndex = index;
+  currentTrackId = checkedTracks[index].id; // 현재 곡 ID 기록
+  lastPlayedTrackId = currentTrackId;
+
+  audio = new Audio(checkedTracks[index].file_url);
+  audio.play();
+
+  updateButtons("playing");
+
+  audio.onloadedmetadata = () => {
+    document.getElementById("total-time").textContent = formatTime(audio.duration);
+  };
+  audio.ontimeupdate = () => {
+    const progress = (audio.currentTime / audio.duration) * 100;
+    document.getElementById("progress-bar").value = progress;
+    document.getElementById("current-time").textContent = formatTime(audio.currentTime);
+  };
+
+  audio.onended = () => {
+    if (repeatMode === "one") {
+      // 같은 곡 반복
+      playSpecificTrack(track);
+    } else if (repeatMode === "all") {
+      nextTrack();
+    } else {
+      // repeatMode === "off"
+      if (isManualPlay) {
+        // 한 번만 재생하고 끝나면 체크된 곡들로 돌아감
+        isManualPlay = false;
+        nextTrack(); // 체크된 곡들로 넘어가기
+      } else {
+        updateButtons("stopped");
+      }
+    }
+  };
+}
+
+
+function pauseTrack() {
+  if (audio) {
+    audio.pause();
+    updateButtons("paused");
+  }
+}
+
+function stopAudio() {
+  if (audio) {
+    audio.pause();
+    audio = null;
+    updateButtons("stopped");
+  }
+}
+
+let lastPlayedIndex = null; // 직전 곡 인덱스 저장
+
+function nextTrack() {
+  const checkedTracks = getCheckedTracks();
+  if (checkedTracks.length === 0) return;
+
+  if (isShuffle) {
+    if (shuffleQueue.length === 0) {
+      generateShuffleQueue(); // 새 셔플 큐 생성
+    }
+    const nextIndex = shuffleQueue.shift(); // 큐에서 하나 꺼내기
+    playTrack(nextIndex);
+  } else {
+    currentIndex = (currentIndex + 1) % checkedTracks.length;
+    playTrack(currentIndex);
+  }
+}
+
+
+function prevTrack() {
+  const checkedTracks = getCheckedTracks();
+  if (checkedTracks.length === 0) return;
+
+  currentIndex = (currentIndex - 1 + checkedTracks.length) % checkedTracks.length;
+  playTrack(currentIndex);
+}
+
+let shuffleQueue = []; // 셔플된 인덱스 배열
+let lastPlayedTrackId = null;
+
+function generateShuffleQueue() {
+  const checkedTracks = getCheckedTracks();
+  shuffleQueue = checkedTracks.map((_, idx) => idx);
+
+  // 직전 곡 제외한 배열 만들기
+  if (lastPlayedTrackId !== null) {
+    shuffleQueue = shuffleQueue.filter(idx => checkedTracks[idx].id !== lastPlayedTrackId);
+  }
+
+  // Fisher-Yates 셔플
+  for (let i = shuffleQueue.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffleQueue[i], shuffleQueue[j]] = [shuffleQueue[j], shuffleQueue[i]];
+  }
+
+  // 직전 곡을 랜덤 위치에 삽입
+  if (lastPlayedTrackId !== null) {
+    const lastIndex = checkedTracks.findIndex(t => t.id === lastPlayedTrackId);
+    const randomPos = Math.floor(Math.random() * (shuffleQueue.length + 1));
+    shuffleQueue.splice(randomPos, 0, lastIndex);
+  }
+}
+
+// ==================== 재생 바 ====================
+document.getElementById("progress-bar").addEventListener("input", (e) => {
+  if (audio) {
+    const seekTime = (e.target.value / 100) * audio.duration;
+    audio.currentTime = seekTime;
+  }
+});
+
+function formatTime(seconds) {
+  if (isNaN(seconds)) return "0:00";
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60).toString().padStart(2, "0");
+  return `${m}:${s}`;
+}
+
+// ==================== 컨트롤 버튼 ====================
+document.getElementById("shuffle-btn").addEventListener("click", () => {
+  isShuffle = !isShuffle;
+  if (isShuffle) {
+    generateShuffleQueue();
+  } else {
+    shuffleQueue = [];
+  }
+  updateShuffleButton();
+});
+
+document.getElementById("prev-btn").addEventListener("click", prevTrack);
+
+document.getElementById("play-btn").addEventListener("click", () => {
+  if (!audio) {
+    playTrack(currentIndex ?? 0);
+  } else {
+    audio.play();
+    updateButtons("playing");
+  }
+});
+
+document.getElementById("pause-btn").addEventListener("click", () => {
+  pauseTrack();
+});
+
+document.getElementById("next-btn").addEventListener("click", nextTrack);
+
+document.getElementById("repeat-btn").addEventListener("click", () => {
+  if (repeatMode === "all") {
+    repeatMode = "one";   // 한 곡 반복
+  } else if (repeatMode === "one") {
+    repeatMode = "off";   // 반복 꺼짐
+  } else {
+    repeatMode = "all";   // 전체 반복
+  }
+  updateRepeatButton();
+});
+
+// ==================== 트랙 불러오기 ====================
+async function loadTracks() {
+  const token = localStorage.getItem("access_token");
+  const res = await fetch("/timer/tracks", {
+    headers: { "Authorization": `Bearer ${token}` }
+  });
+  const data = await res.json();
+  trackList = data.tracks;
+
+  const list = document.getElementById("track-list");
+  list.innerHTML = "";
+
+  trackList.forEach((track, idx) => {
+    const div = document.createElement("div");
+    div.classList.add("track-item");
+    div.setAttribute("data-id", track.id);
+
+    // 드래그 핸들 (::)
+    const handle = document.createElement("span");
+    handle.classList.add("drag-handle");
+    handle.textContent = "::";
+
+    // 체크박스
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = track.is_checked;
+    checkbox.addEventListener("change", async () => {
+      track.is_checked = checkbox.checked; // trackList 상태 갱신
+      await fetch(`/timer/tracks/${track.id}/check`, {
+        method: "PUT",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ is_checked: checkbox.checked })
+      });
+    });
+
+
+    // 제목
+    const title = document.createElement("span");
+    title.textContent = track.title;
+
+    // 즐겨찾기 별표
+    const star = document.createElement("span");
+    star.classList.add("favorite");
+    star.textContent = track.is_favorite ? "★" : "☆";
+    star.style.color = track.is_favorite ? "gold" : "black";
+    star.addEventListener("click", async () => {
+      const newState = !track.is_favorite;
+      track.is_favorite = newState;
+      star.textContent = newState ? "★" : "☆";
+      star.style.color = newState ? "gold" : "black";
+
+      await fetch(`/timer/tracks/${track.id}/favorite`, {
+        method: "PUT",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ is_favorite: newState })
+      });
+    });
+
+    // 재생 버튼
+    const playBtn = document.createElement("button");
+    playBtn.textContent = "▶";
+    playBtn.addEventListener("click", () => {
+      if (currentIndex === idx && audio && !audio.paused) {
+        pauseTrack();
+      } else {
+        // 체크 여부와 상관없이 재생
+        isManualPlay = true;
+        playSpecificTrack(track);
+      }
+    });
+
+function playSpecificTrack(track) {
+  if (audio) audio.pause();
+  currentTrackId = track.id;   // 현재 곡 ID 저장
+  lastPlayedTrackId = currentTrackId;
+
+  audio = new Audio(track.file_url);
+  audio.play();
+  updateButtons("playing");
+
+  audio.onloadedmetadata = () => {
+    document.getElementById("total-time").textContent = formatTime(audio.duration);
+  };
+  audio.ontimeupdate = () => {
+    const progress = (audio.currentTime / audio.duration) * 100;
+    document.getElementById("progress-bar").value = progress;
+    document.getElementById("current-time").textContent = formatTime(audio.currentTime);
+  };
+
+  audio.onended = () => {
+    if (repeatMode === "one") {
+      // 같은 곡 반복
+      playSpecificTrack(track);
+    } else if (repeatMode === "all") {
+      nextTrack();
+    } else {
+      // repeatMode === "off"
+      if (isManualPlay) {
+        // 한 번만 재생하고 끝나면 체크된 곡들로 돌아감
+        isManualPlay = false;
+        nextTrack(); // 체크된 곡들로 넘어가기
+      } else {
+        updateButtons("stopped");
+      }
+    }
+  };
+}
+
+    div.appendChild(handle);
+    div.appendChild(checkbox);
+    div.appendChild(title);
+    div.appendChild(star);
+    div.appendChild(playBtn);
+
+    list.appendChild(div);
+  });
+
+  // 드래그 앤 드롭으로 순서 변경
+  makeListSortable(list);
+}
+
+function makeListSortable(list) {
+  let draggingEl = null;
+  let placeholder = document.createElement("div");
+  placeholder.className = "track-item placeholder";
+  placeholder.style.border = "2px dashed #aaa";
+  placeholder.style.height = "40px";
+
+  list.querySelectorAll(".track-item").forEach(item => {
+    const handle = item.querySelector(".drag-handle");
+
+    handle.addEventListener("mousedown", e => {
+      draggingEl = item;
+      item.classList.add("dragging");
+      list.insertBefore(placeholder, item.nextSibling);
+
+      // 절대 위치로 따라다니게
+      const rect = item.getBoundingClientRect();
+      item.style.width = rect.width + "px";
+      item.style.position = "absolute";
+      item.style.left = rect.left + "px";
+      item.style.top = rect.top + "px";
+      item.style.zIndex = 1000;
+      item.style.pointerEvents = "none";
+
+      e.preventDefault();
+    });
+  });
+
+  document.addEventListener("mousemove", e => {
+    if (draggingEl) {
+      // 드래그 중인 요소 따라다니기
+      draggingEl.style.top = e.clientY - draggingEl.offsetHeight / 2 + "px";
+
+      // placeholder 위치 계산
+      const items = Array.from(list.children).filter(el => el !== draggingEl && el !== placeholder);
+      let target = null;
+      for (let el of items) {
+        const box = el.getBoundingClientRect();
+        if (e.clientY < box.top + box.height / 2) {
+          target = el;
+          break;
+        }
+      }
+      if (target) {
+        list.insertBefore(placeholder, target);
+      } else {
+        list.appendChild(placeholder);
+      }
+    }
+  });
+
+  document.addEventListener("mouseup", async () => {
+    if (draggingEl) {
+      // draggingEl을 placeholder 위치로 되돌리기
+      list.insertBefore(draggingEl, placeholder);
+      draggingEl.classList.remove("dragging");
+      draggingEl.style.position = "";
+      draggingEl.style.top = "";
+      draggingEl.style.left = "";
+      draggingEl.style.width = "";
+      draggingEl.style.zIndex = "";
+      draggingEl.style.pointerEvents = "";
+      placeholder.remove();
+      draggingEl = null;
+
+      // 순서 저장
+      const newOrder = Array.from(list.children).map((el, idx) => ({
+        track_id: parseInt(el.getAttribute("data-id")),
+        order_index: idx + 1
+      }));
+
+      await fetch("/timer/tracks/order", {
+        method: "PUT",
+        headers: {
+          "Authorization": `Bearer ${localStorage.getItem("access_token")}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(newOrder)
+      });
+    }
+  });
+}
+
+// ==================== 셔플 버튼 ====================
+function updateShuffleButton() {
+  const btn = document.getElementById("shuffle-btn");
+  if (isShuffle) {
+    btn.classList.remove("off");
+  } else {
+    btn.classList.add("off");
+  }
+}
+
+// ==================== 반복 버튼 ====================
+function updateRepeatButton() {
+  const btn = document.getElementById("repeat-btn");
+  btn.classList.remove("off");
+  if (repeatMode === "all") {
+    btn.textContent = "🔁";
+  } else if (repeatMode === "one") {
+    btn.textContent = "🔂";
+  } else {
+    btn.textContent = "🔁";
+    btn.classList.add("off"); // 사선 표시
+  }
+}
+
+// 페이지 로드 시 셔플 버튼 상태 초기화
+updateShuffleButton();
+
+
+  </script>
+</body>
+</html>
