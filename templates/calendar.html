@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="description" content="Tomato Study Manager">
+    <meta name="keywords" content="tomato, calendar, study">
+    <title>🍅 토마토 학습 매니저</title>
+    <style>
+        /* 기본 레이아웃 */
+        body { 
+            font-family: 'Arial', sans-serif; 
+            background-color: #f4f4f9; 
+            display: flex; 
+            justify-content: center; 
+            align-items: flex-start; 
+            padding: 50px; 
+            gap: 30px;
+            margin-top: 50px;
+        }
+
+        /* 카드 공통 스타일 */
+        .card { 
+            background: white; 
+            padding: 30px; 
+            border-radius: 20px; 
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1); 
+            min-height: 550px;
+        }
+
+        .left-section { width: 350px; text-align: center; }
+        .right-section { width: 450px; display: flex; flex-direction: column; gap: 20px; }
+
+        /* 입력 요소 스타일 */
+        #current-date { width: 85%; padding: 10px; border-radius: 8px; border: 1px solid #ddd; font-size: 1.1rem; margin-bottom: 15px; }
+        .input-group { display: flex; gap: 5px; margin-bottom: 15px; }
+        input[type="text"] { flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 5px; }
+        
+        /* Todo 리스트 디자인 (Inline 스타일 제거) */
+        .todo-list { text-align: left; margin-top: 20px; }
+        #todo-items { padding: 0; margin: 0; }
+        .todo-item { 
+            background: #f9f9f9; 
+            margin: 8px 0; 
+            padding: 12px; 
+            border-radius: 10px; 
+            border-left: 5px solid #ff6b6b; 
+            list-style: none; 
+        }
+
+        /* 메모 섹션 디자인 */
+        .memo-box { border: 2px solid #333; border-radius: 15px; padding: 20px; flex-grow: 1; position: relative; }
+        .memo-title-input { width: 100%; border:none; border-bottom: 2px solid #333; font-size: 1.2rem; font-weight: bold; padding: 5px 0; outline: none; }
+        .ai-message { background: #fff; border: 1px solid #ddd; border-radius: 20px; padding: 15px; margin: 15px 0; font-size: 0.9rem; line-height: 1.5; color: #555; }
+        textarea { width: 100%; height: 180px; border: 1px solid #eee; border-radius: 10px; padding: 10px; resize: none; box-sizing: border-box; }
+
+        /* 버튼 스타일 */
+        button { background: #ff6b6b; color: white; border: none; padding: 12px; border-radius: 8px; cursor: pointer; font-weight: bold; }
+        button:hover { background: #ee5253; }
+        .save-btn { width: 100%; margin-top: 15px; background: #333; }
+        .save-btn:hover { background: #000; }
+
+        /* 아이콘 */
+        .tomato-icon { font-size: 60px; margin: 10px; }
+        .big-tomato { font-size: 80px; text-align: right; margin-top: 10px; }
+    </style>
+</head>
+<body>
+
+    <div class="card left-section">
+        <input type="date" id="current-date" onchange="loadDailyData()">
+        <div class="tomato-icon">🍅</div>
+        <div class="input-group">
+            <input type="text" id="todo-input" placeholder="오늘의 공부 계획은?">
+            <button onclick="addTodo()">추가</button>
+        </div>
+        <div class="todo-list">
+            <h3>📋 오늘의 Todo</h3>
+            <ul id="todo-items"></ul>
+        </div>
+    </div>
+
+    <div class="card right-section">
+        <h2>메모 기록 <small>(타이머 연동 예정)</small></h2>
+        <div class="memo-box">
+            <input type="text" id="memo-title" class="memo-title-input" placeholder="학습 주제를 입력하세요">
+            <div class="ai-message">
+                <strong>🤖 AI 가이드:</strong><br>
+                "동제님, 오늘의 학습 목표를 달성하면 <br>골든 토티를 받을 수 있어요! 화이팅!"
+            </div>
+            <textarea id="memo-content" placeholder="공부한 핵심 내용을 여기에 기록하세요..."></textarea>
+            <button class="save-btn" onclick="saveMemo()">📝 메모 저장하기</button>
+            <div class="big-tomato">🍅</div>
+        </div>
+    </div>
+
+    <script>
+    // 1. 날짜 초기화
+    function setDefaultDate() {
+        const today = new Date().toISOString().split('T')[0];
+        const dateInput = document.getElementById('current-date');
+        if (dateInput) dateInput.value = today;
+    }
+
+    // 2. 할 일 & 메모 불러오기 (화면 출력 로직 포함)
+    async function loadDailyData() {
+        const dateInput = document.getElementById('current-date');
+        if (!dateInput) return;
+        const date = dateInput.value;
+
+        try {
+            // Todo 목록 가져오기
+            const resTodo = await fetch(`http://127.0.0.1:8000/daily/${date}`);
+            const dataTodo = await resTodo.json();
+            const ul = document.getElementById('todo-items');
+            ul.innerHTML = ""; 
+            if (dataTodo.todos) {
+                dataTodo.todos.forEach(todo => {
+                    const li = document.createElement('li');
+                    li.className = 'todo-item';
+                    li.innerText = `✅ ${todo.content}`;
+                    ul.appendChild(li);
+                });
+            }
+
+            // ⭐ 메모 가져와서 화면 입력창에 뿌려주기
+            const resMemo = await fetch(`http://127.0.0.1:8000/memo/${date}`);
+            if (resMemo.ok) {
+                const dataMemo = await resMemo.json();
+                document.getElementById('memo-title').value = dataMemo.title || "";
+                document.getElementById('memo-content').value = dataMemo.content || "";
+                console.log("메모 화면 출력 완료");
+            }
+        } catch (e) {
+            console.error("로드 에러:", e);
+        }
+    }
+
+    // 3. 할 일(Todo) 추가 함수 (살려냈습니다!)
+    async function addTodo() {
+        const input = document.getElementById('todo-input');
+        const date = document.getElementById('current-date').value;
+        if (!input.value) return;
+
+        try {
+            const url = `http://127.0.0.1:8000/todo?content=${encodeURIComponent(input.value)}&user_id=1&date=${date}`;
+            const res = await fetch(url, { method: 'POST' });
+            if (res.ok) {
+                input.value = "";
+                await loadDailyData(); // 목록 새로고침
+            }
+        } catch (e) {
+            console.error("추가 실패:", e);
+        }
+    }
+
+    // 4. 메모 저장 함수
+    async function saveMemo() {
+        const title = document.getElementById('memo-title').value;
+        const content = document.getElementById('memo-content').value;
+        const date = document.getElementById('current-date').value;
+
+        if (!title || !content) return alert("내용을 입력해주세요!");
+
+        try {
+            const url = `http://127.0.0.1:8000/memo?title=${encodeURIComponent(title)}&content=${encodeURIComponent(content)}&date=${date}`;
+            const res = await fetch(url, { method: 'POST' });
+            if (res.ok) {
+                alert("✅ 메모가 서버에 저장되었습니다!");
+                loadDailyData();
+            }
+        } catch (e) {
+            alert("저장 실패!");
+        }
+    }
+
+    // 5. 페이지 시작 시 실행
+    window.onload = () => {
+        setDefaultDate();
+        loadDailyData();
+    };
+</script>
+</body>
+</html>

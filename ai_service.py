@@ -506,26 +506,21 @@ def generate_study_plan_options(study_type: StudyType, total_study_minutes: int)
     top_under_any = under_candidates[:1]
     top_over_any = over_candidates[:1]
 
-    has_long_break_in_other_candidates = bool(top_under_long or top_over_long)
+    # exact가 있으면 항상 1순위로 먼저 넣기
+    for item in top_exact:
+        add_recommendation(item)
 
-    if has_long_break_in_other_candidates:
-        for item in top_under_long:
-            add_recommendation(item)
-        for item in top_over_long:
-            add_recommendation(item)
-        for item in top_exact:
-            add_recommendation(item)
-        for item in top_under_any:
-            add_recommendation(item)
-        for item in top_over_any:
-            add_recommendation(item)
-    else:
-        for item in top_exact:
-            add_recommendation(item)
-        for item in top_under_any:
-            add_recommendation(item)
-        for item in top_over_any:
-            add_recommendation(item)
+    # 그 다음부터 긴 휴식 포함 후보를 우선 보강
+    for item in top_under_long:
+        add_recommendation(item)
+    for item in top_over_long:
+        add_recommendation(item)
+
+    # 남은 자리는 일반 under / over로 채우기
+    for item in top_under_any:
+        add_recommendation(item)
+    for item in top_over_any:
+        add_recommendation(item)
 
     for idx, recommendation in enumerate(recommendations, start=1):
         recommendation.rank = idx
