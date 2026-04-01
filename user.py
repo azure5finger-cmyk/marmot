@@ -216,6 +216,5 @@ async def update_nickname(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    user.nickname = body.nickname
     await db.commit()
     return SettingsResponse(message="nickname updated")
