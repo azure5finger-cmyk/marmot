@@ -12,6 +12,10 @@ from datetime import datetime, timedelta, timezone
 import os
 
 from db import get_db, User
+from pydantic import BaseModel, Field
+
+
+
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -28,6 +32,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/users/login")
 class SignupRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=6, description="비밀번호 (최소 6자)")
+    nickname: str = Field(min_length=1)
 
 
 class LoginRequest(BaseModel):
