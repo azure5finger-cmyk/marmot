@@ -6,7 +6,7 @@ from fastapi.staticfiles import StaticFiles
 
 import ai_service
 import db
-import my_calendar
+# import my_calendar
 import stats
 import timer
 import user

@@ -1,16 +1,13 @@
 # my_calendar.py
-from datetime import datetime
-from fastapi import APIRouter, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from db import get_db, Todo, StudyRecord, Memo
-from fastapi.responses import FileResponse
-# from fastapi import Request # Depends 옆에 Request 추가
-from db import get_db
-from db import Todo, StudyRecord, Memo
-from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
+from datetime import date, datetime
 import os
+
+from fastapi import APIRouter, Depends
+from fastapi.responses import FileResponse
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from db import Memo, StudyRecord, Todo, get_db
 
 router = APIRouter()
 
@@ -124,7 +121,7 @@ async def get_memo(date: str, db: AsyncSession = Depends(get_db)):
     return memos
 
 # my_calendar.py 맨 밑에 추가
-from datetime import date
+# from datetime import date
 
 @router.get("/monthly/{year}/{month}")
 async def get_monthly_info(year: int, month: int, db: AsyncSession = Depends(get_db)):
