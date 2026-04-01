@@ -28,7 +28,6 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/users/login")
 class SignupRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=6, description="비밀번호 (최소 6자)")
-    nickname: str = Field(min_length=1, max_length=20, description="닉네임 (1~20자)")
 
 
 class LoginRequest(BaseModel):
@@ -41,7 +40,7 @@ class SettingsRequest(BaseModel):
     goal_minutes: int = Field(gt=0, le=1440, description="목표 시간 (분, 0보다 크고 1440 이하)")
     default_focus_time: int = Field(gt=0, le=1440, description="기본 집중 시간 (분, 0보다 크고 1440 이하)")
     default_break_time: int = Field(gt=0, le=1440, description="기본 휴식 시간 (분, 0보다 크고 1440 이하)")
-    ai_mode: str = Field(description="AI 모드 설정")
+    nickname: str = Field(min_length=1, max_length=20, description="닉네임 (1~20자)")
 
 
 # --- Pydantic 응답 스키마 ---
@@ -63,7 +62,6 @@ class MypageResponse(BaseModel):
     goal_minutes: int
     default_focus_time: int
     default_break_time: int
-    ai_mode: Optional[str] = None
     created_at: str
     experience: int
     level: int
@@ -188,7 +186,6 @@ async def mypage(user: User = Depends(get_current_user)):
         goal_minutes=user.goal_minutes,
         default_focus_time=user.default_focus_time,
         default_break_time=user.default_break_time,
-        ai_mode=user.ai_mode,
         created_at=user.created_at.isoformat(),
         experience=user.exp,
         level=calc_level(user.exp)
@@ -205,8 +202,20 @@ async def update_settings(
     user.goal_minutes = body.goal_minutes
     user.default_focus_time = body.default_focus_time
     user.default_break_time = body.default_break_time
-    user.ai_mode = body.ai_mode
-
     await db.commit()
 
     return SettingsResponse(message="settings updated")
+
+# 닉네임 수정
+class NicknameRequest(BaseModel):
+    nickname: str = Field(min_length=1, max_length=20, description="닉네임 (1~20자)")
+
+@router.put("/nickname", response_model=SettingsResponse)
+async def update_nickname(
+    body: NicknameRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    user.nickname = body.nickname
+    await db.commit()
+    return SettingsResponse(message="nickname updated")

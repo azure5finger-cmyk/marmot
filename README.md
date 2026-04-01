@@ -1,35 +1,37 @@
-#ToTi
+# ToTi 배포주소
 http://3.38.58.74/
 
-1. 실행방법
-- docker compose up -d --build 실행
-- docker exec -it toti-app sh -c "python bgm-import.py" 실행하여 bgm파일을 db저장
-- 이 후 docker exec -it toti-db psql -U toti_user -d toti_db -c "SELECT id, title, file_url FROM track;" 실행하여 db저장 확인
-  
-2. .env 필요 내용
-- 필수내용
-POSTGRES_DB
-POSTGRES_USER
-POSTGRES_PASSWORD
 
-GEMINI_API_KEY
+# CI/CD
 
-DATABASE_URL
+본 프로젝트는 GitHub Actions를 기반으로 CI(지속적 통합)와 CD(지속적 배포)를 구성하였습니다.
 
-SECRET_KEY
+CI (Continuous Integration)
 
-ACCESS_TOKEN_EXPIRE_HOURS=2
+CI는 main, develop, feature/** 브랜치에 대한 push 및 pull_request 이벤트 시 자동 실행됩니다.
+워크플로우는 Python 환경 설정 후 의존성 설치를 수행하고, ruff를 통한 코드 정적 검사, 애플리케이션 import 검증, 그리고 주요 테스트(pytest)를 실행하여 코드 품질과 안정성을 검증합니다.
+
+CD (Continuous Deployment)
+
+CD는 CI가 성공적으로 완료된 main 브랜치에 대해 자동 실행되며, 필요 시 수동 실행도 가능합니다.
+배포 과정에서는 EC2 서버에 SSH로 접속하여 최신 코드를 반영한 후, docker compose를 이용해 기존 컨테이너를 재시작하고 최신 이미지로 서비스를 재배포합니다.
+
+Deployment Architecture
+
+서비스는 Docker Compose 기반으로 구성되며, 애플리케이션, 데이터베이스(PostgreSQL), 그리고 Nginx를 포함한 컨테이너 구조로 운영됩니다.
+환경 변수는 .env 및 GitHub Secrets를 통해 관리되며, 민감 정보는 저장소에 포함되지 않습니다.
+
+   * .env 필수 내용
+    
+    POSTGRES_DB
+    POSTGRES_USER
+    POSTGRES_PASSWORD
+    GEMINI_API_KEY
+    DATABASE_URL
+    SECRET_KEY
+    ACCESS_TOKEN_EXPIRE_HOURS=2
 
 
-git clone https://github.com/azure5finger-cmyk/marmot.git toti
 
-CD testing#1
-
-CD testing#2
-
-CD testing#3
-
-CD testing#4 CD Success
-
-CD testing#5 CD test
+SECRET_KEY = os.getenv("SECRET_KEY", "dev-fallback-key") 배포 전 수정 해야 함
 

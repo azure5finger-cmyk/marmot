@@ -5,33 +5,59 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>설정 수정 - Toti</title>
   <style>
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
+    /* ===== 토마토 테마 CSS 변수 ===== */
+    :root {
+      --tomato:       #e53935;
+      --tomato-light: #ef9a9a;
+      --tomato-dark:  #b71c1c;
+      --tomato-pale:  #fff8f7;
+      --tomato-muted: #ffcdd2;
+      --green:        #4caf50;
+      --bg:           #fff3f0;
+      --card:         #ffffff;
+      --text:         #2d2d2d;
+      --text-sub:     #888888;
+      --border:       #f5c6c0;
+      --shadow:       rgba(229, 57, 53, 0.12);
     }
+
+    @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap');
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
       display: flex;
       justify-content: center;
       align-items: center;
-      height: 100vh;
-      background: #f5f5f5;
-      font-family: sans-serif;
+      min-height: 100vh;
+      font-family: 'Nunito', sans-serif;
+      color: var(--text);
+      background-color: var(--bg);
+      background-image:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='187' height='187' viewBox='0 0 187 187'%3E%3Cg transform='translate(94,105) rotate(30)'%3E%3Ccircle cx='0' cy='0' r='20' fill='%23e5393520'/%3E%3Cellipse cx='0' cy='-22' rx='3' ry='7' fill='%234caf5025'/%3E%3Cellipse cx='-9' cy='-19' rx='7' ry='3' fill='%234caf5025' transform='rotate(-30 -9 -19)'/%3E%3Cellipse cx='9' cy='-19' rx='7' ry='3' fill='%234caf5025' transform='rotate(30 9 -19)'/%3E%3C/g%3E%3C/svg%3E"),
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='187' height='187' viewBox='0 0 187 187'%3E%3Cg transform='translate(94,105) rotate(30)'%3E%3Ccircle cx='0' cy='0' r='20' fill='%23e5393520'/%3E%3Cellipse cx='0' cy='-22' rx='3' ry='7' fill='%234caf5025'/%3E%3Cellipse cx='-9' cy='-19' rx='7' ry='3' fill='%234caf5025' transform='rotate(-30 -9 -19)'/%3E%3Cellipse cx='9' cy='-19' rx='7' ry='3' fill='%234caf5025' transform='rotate(30 9 -19)'/%3E%3C/g%3E%3C/svg%3E");
+      background-position: 0 94px, 94px 0;
+      background-repeat: repeat;
+      background-size: 187px 187px;
+      padding: 40px 16px;
     }
 
     .card {
-      background: #ffffff;
-      border: 1px solid #ccc;
-      border-radius: 6px;
+      background: var(--card);
+      border: 1.5px solid var(--border);
+      border-radius: 20px;
       padding: 40px 36px;
-      width: 400px;
-      box-shadow: 2px 2px 8px rgba(0,0,0,0.1);
+      box-shadow: 0 8px 32px var(--shadow);
+      position: relative;
+      z-index: 1;
+      width: 480px;
+      max-width: 95vw;
     }
 
     h1 {
       font-size: 1.6em;
-      color: #333;
+      font-weight: 800;
+      color: var(--tomato-dark);
       margin-bottom: 28px;
       text-align: center;
     }
@@ -45,30 +71,40 @@
 
     label {
       font-size: 0.9em;
-      color: #555;
+      color: var(--text-sub);
+      font-weight: 600;
     }
 
     input, select {
       padding: 10px 12px;
-      border: 1px solid #ccc;
-      border-radius: 6px;
+      border: 1.5px solid var(--border);
+      border-radius: 10px;
       font-size: 1em;
-      background: #f9f9f9;
-      transition: border 0.2s;
+      background: var(--tomato-pale);
+      color: var(--text);
+      font-family: 'Nunito', sans-serif;
+      transition: border 0.2s, background 0.2s;
     }
 
     input:focus, select:focus {
       outline: none;
-      border-color: #e57373;
+      border-color: var(--tomato);
       background: #fff;
     }
 
     .error-msg {
       font-size: 0.8em;
-      color: #e57373;
+      color: var(--tomato);
       min-height: 16px;
     }
 
+    .success-msg {
+      font-size: 0.85em;
+      color: var(--green);
+      text-align: center;
+      min-height: 18px;
+      margin-top: 8px;
+    }
     .btn-group {
       display: flex;
       gap: 10px;
@@ -79,38 +115,28 @@
       flex: 1;
       padding: 12px;
       border: none;
-      border-radius: 6px;
+      border-radius: 10px;
       font-size: 0.95em;
+      font-weight: 700;
+      font-family: 'Nunito', sans-serif;
       cursor: pointer;
-      transition: background 0.2s;
+      transition: opacity 0.2s, transform 0.1s;
     }
 
     .btn-primary {
-      background: #e57373;
+      background: linear-gradient(135deg, var(--tomato), var(--tomato-dark));
       color: white;
     }
 
-    .btn-primary:hover {
-      background: #ef9a9a;
-    }
+    .btn-primary:hover { opacity: 0.9; transform: scale(1.01); }
 
     .btn-secondary {
-      background: #f0f0f0;
-      color: #333;
-      border: 1px solid #ccc;
+      background: var(--tomato-pale);
+      color: var(--tomato-dark);
+      border: 1.5px solid var(--border);
     }
 
-    .btn-secondary:hover {
-      background: #e0e0e0;
-    }
-
-    .success-msg {
-      font-size: 0.85em;
-      color: #4caf50;
-      text-align: center;
-      min-height: 18px;
-      margin-top: 10px;
-    }
+    .btn-secondary:hover { background: var(--tomato-muted); }
   </style>
 </head>
 <body>
@@ -135,15 +161,6 @@
       <span class="error-msg" id="break-error"></span>
     </div>
 
-    <div class="form-group">
-      <label for="ai-mode">AI 모드</label>
-      <select id="ai-mode">
-        <option value="">선택 안 함</option>
-        <option value="집중 모드">집중 모드</option>
-        <option value="휴식 모드">휴식 모드</option>
-        <option value="학습 모드">학습 모드</option>
-      </select>
-    </div>
 
     <div class="btn-group">
       <button class="btn btn-primary" id="save-btn">저장</button>
@@ -176,7 +193,6 @@
         document.getElementById("goal-minutes").value = data.goal_minutes;
         document.getElementById("focus-time").value = data.default_focus_time;
         document.getElementById("break-time").value = data.default_break_time;
-        document.getElementById("ai-mode").value = data.ai_mode || "";
       } catch (err) {
         console.error("설정 불러오기 실패", err);
       }
@@ -193,7 +209,6 @@
       const goal_minutes = parseInt(document.getElementById("goal-minutes").value);
       const default_focus_time = parseInt(document.getElementById("focus-time").value);
       const default_break_time = parseInt(document.getElementById("break-time").value);
-      const ai_mode = document.getElementById("ai-mode").value;
 
       let valid = true;
 
@@ -219,7 +234,7 @@
             "Content-Type": "application/json",
             "Authorization": `Bearer ${token}`
           },
-          body: JSON.stringify({ goal_minutes, default_focus_time, default_break_time, ai_mode })
+          body: JSON.stringify({ goal_minutes, default_focus_time, default_break_time })
         });
 
         const data = await res.json();
