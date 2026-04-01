@@ -12,9 +12,6 @@ from datetime import datetime, timedelta, timezone
 import os
 
 from db import get_db, User
-from pydantic import BaseModel, Field
-
-
 
 
 router = APIRouter(prefix="/users", tags=["users"])
