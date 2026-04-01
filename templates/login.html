@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>로그인 - Toti</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      background: #f5f5f5;
+      font-family: sans-serif;
+    }
+
+    .card {
+      background: #ffffff;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      padding: 40px 36px;
+      width: 360px;
+      box-shadow: 2px 2px 8px rgba(0,0,0,0.1);
+    }
+
+    h1 {
+      font-size: 1.6em;
+      color: #333;
+      margin-bottom: 28px;
+      text-align: center;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 16px;
+    }
+
+    label {
+      font-size: 0.9em;
+      color: #555;
+    }
+
+    input {
+      padding: 10px 12px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      font-size: 1em;
+      background: #f9f9f9;
+      transition: border 0.2s;
+    }
+
+    input:focus {
+      outline: none;
+      border-color: #e57373;
+      background: #fff;
+    }
+
+    .error-msg {
+      font-size: 0.8em;
+      color: #e57373;
+      min-height: 16px;
+    }
+
+    .btn {
+      width: 100%;
+      padding: 12px;
+      background: #e57373;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 1em;
+      cursor: pointer;
+      margin-top: 8px;
+      transition: background 0.2s;
+    }
+
+    .btn:hover {
+      background: #ef9a9a;
+    }
+
+    .signup-link {
+      text-align: center;
+      margin-top: 16px;
+      font-size: 0.9em;
+      color: #777;
+    }
+
+    .signup-link a {
+      color: #e57373;
+      text-decoration: none;
+    }
+
+    .signup-link a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>로그인</h1>
+
+    <div class="form-group">
+      <label for="email">이메일</label>
+      <input type="email" id="email" placeholder="example@email.com">
+    </div>
+
+    <div class="form-group">
+      <label for="password">비밀번호</label>
+      <input type="password" id="password" placeholder="비밀번호를 입력하세요">
+      <span class="error-msg" id="login-error"></span>
+    </div>
+
+    <button class="btn" id="login-btn">로그인</button>
+
+    <div class="signup-link">
+      계정이 없으신가요? <a href="/users/signup-page">회원가입</a>
+    </div>
+  </div>
+
+  <script>
+    const loginBtn = document.getElementById("login-btn");
+
+    loginBtn.addEventListener("click", async () => {
+      document.getElementById("login-error").textContent = "";
+
+      const email = document.getElementById("email").value.trim();
+      const password = document.getElementById("password").value;
+
+      if (!email || !password) {
+        document.getElementById("login-error").textContent = "이메일과 비밀번호를 입력해주세요.";
+        return;
+      }
+
+      try {
+        const res = await fetch("/users/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password })
+        });
+
+        const data = await res.json();
+
+        if (res.ok) {
+          localStorage.setItem("access_token", data.access_token);
+          window.location.href = "/timer";
+        } else {
+          document.getElementById("login-error").textContent = "이메일 또는 비밀번호가 올바르지 않습니다.";
+        }
+      } catch (err) {
+        console.error("서버 연결 실패", err);
+        alert("서버와 연결할 수 없습니다.");
+      }
+    });
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") loginBtn.click();
+    });
+  </script>
+</body>
+</html>
