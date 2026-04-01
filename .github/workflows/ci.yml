@@ -28,5 +28,12 @@ jobs:
         run: python -m pip install --upgrade pip
       - name: Install dependencies
         run: pip install -r requirements.txt
+
+      - name: Run ruff
+        run: ruff check .
+
+      - name: Check app import
+        run: python -c "import main"
+
       - name: Run selected tests
         run: pytest test_ai_service.py test_user.py test_timer.py test_stats.py
