@@ -1,9 +1,15 @@
-from fastapi import FastAPI, APIRouter, Request
-from fastapi.responses import RedirectResponse
 from contextlib import asynccontextmanager
-from fastapi.staticfiles import StaticFiles
-import ai_service, my_calendar, db, timer, user, stats
 
+from fastapi import FastAPI
+from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
+
+import ai_service
+import db
+import my_calendar
+import stats
+import timer
+import user
 
 @asynccontextmanager
 async def app_life_span(app: FastAPI):
