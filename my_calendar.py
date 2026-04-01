@@ -1,11 +1,11 @@
 # my_calendar.py
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from db import get_db, Todo, StudyRecord, Memo
 from fastapi.responses import FileResponse
-from fastapi import Request # Depends 옆에 Request 추가
+# from fastapi import Request # Depends 옆에 Request 추가
 import os
 
 router = APIRouter()
