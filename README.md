@@ -1,3 +1,6 @@
+#ToTi
+http://3.38.58.74/
+
 1. 실행방법
 - docker compose up -d --build 실행
 - docker exec -it toti-app sh -c "python bgm_import.py" 실행하여 bgm파일을 db저장
