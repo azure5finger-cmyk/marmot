@@ -3,7 +3,7 @@ from fastapi import HTTPException
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-# from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload
 from sqlalchemy.sql import func
 from datetime import date, datetime
 from pydantic import BaseModel
