@@ -15,7 +15,7 @@ from db import get_db, User
 
 router = APIRouter(prefix="/users", tags=["users"])
 
-SECRET_KEY = os.getenv("SECRET_KEY", "dev-fallback-key")
+SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = int(os.getenv("ACCESS_TOKEN_EXPIRE_HOURS", 2))
 
