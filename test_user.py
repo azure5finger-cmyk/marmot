@@ -83,6 +83,17 @@ def test_signup_invalid_nickname_empty(client):
     assert response.status_code == 422
 
 
+def test_signup_invalid_nickname_too_long(client):
+    response = signup_user(
+        client,
+        email="longnick@example.com",
+        password="123456",
+        nickname="a" * 21,
+    )
+
+    assert response.status_code == 422
+
+
 # ----------------------------
 # 로그인 테스트
 # ----------------------------
@@ -139,7 +150,6 @@ def test_mypage_returns_user_info(client):
     assert data["goal_minutes"] == 120
     assert data["default_focus_time"] == 25
     assert data["default_break_time"] == 5
-    assert data["ai_mode"] is None
     assert data["experience"] == 0
     assert data["level"] == 1
     assert "created_at" in data
@@ -155,7 +165,6 @@ def test_update_settings_requires_auth(client):
             "goal_minutes": 180,
             "default_focus_time": 50,
             "default_break_time": 10,
-            "ai_mode": "focus",
         },
     )
 
@@ -173,7 +182,6 @@ def test_update_settings_success(client):
             "goal_minutes": 180,
             "default_focus_time": 50,
             "default_break_time": 10,
-            "ai_mode": "focus",
         },
     )
 
@@ -187,7 +195,6 @@ def test_update_settings_success(client):
     assert data["goal_minutes"] == 180
     assert data["default_focus_time"] == 50
     assert data["default_break_time"] == 10
-    assert data["ai_mode"] == "focus"
 
 
 def test_update_settings_invalid_value_fails(client):
@@ -201,8 +208,79 @@ def test_update_settings_invalid_value_fails(client):
             "goal_minutes": 0,
             "default_focus_time": 50,
             "default_break_time": 10,
-            "ai_mode": "focus",
         },
+    )
+
+    assert response.status_code == 422
+
+
+def test_update_settings_exceeds_max_value_fails(client):
+    signup_user(client, email="maxsettings@example.com", password="123456", nickname="tester")
+    headers = get_auth_header(client, email="maxsettings@example.com", password="123456")
+
+    response = client.put(
+        "/users/settings",
+        headers=headers,
+        json={
+            "goal_minutes": 1441,
+            "default_focus_time": 25,
+            "default_break_time": 5,
+        },
+    )
+
+    assert response.status_code == 422
+
+
+# ----------------------------
+# 닉네임 수정 테스트
+# ----------------------------
+def test_update_nickname_requires_auth(client):
+    response = client.put(
+        "/users/nickname",
+        json={"nickname": "newnick"},
+    )
+
+    assert response.status_code == 401
+
+
+def test_update_nickname_success(client):
+    signup_user(client, email="nickedit@example.com", password="123456", nickname="oldnick")
+    headers = get_auth_header(client, email="nickedit@example.com", password="123456")
+
+    response = client.put(
+        "/users/nickname",
+        headers=headers,
+        json={"nickname": "newnick"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["message"] == "nickname updated"
+
+    mypage_response = client.get("/users/mypage", headers=headers)
+    assert mypage_response.json()["nickname"] == "newnick"
+
+
+def test_update_nickname_empty_fails(client):
+    signup_user(client, email="emptynicke@example.com", password="123456", nickname="tester")
+    headers = get_auth_header(client, email="emptynicke@example.com", password="123456")
+
+    response = client.put(
+        "/users/nickname",
+        headers=headers,
+        json={"nickname": ""},
+    )
+
+    assert response.status_code == 422
+
+
+def test_update_nickname_too_long_fails(client):
+    signup_user(client, email="longnick2@example.com", password="123456", nickname="tester")
+    headers = get_auth_header(client, email="longnick2@example.com", password="123456")
+
+    response = client.put(
+        "/users/nickname",
+        headers=headers,
+        json={"nickname": "a" * 21},
     )
 
     assert response.status_code == 422
