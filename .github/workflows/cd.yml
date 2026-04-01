@@ -37,6 +37,6 @@ jobs:
             docker compose up -d --build
 
             # 필요하면 아래 줄 주석 해제
-            docker exec -i toti-app python bgm-import.py
+            # docker exec -i toti-app python bgm-import.py
 
             docker ps
