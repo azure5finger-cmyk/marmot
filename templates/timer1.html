@@ -788,7 +788,7 @@
         <div style="display:flex; gap:8px; align-items:center;">
           <input type="number" id="ai-hours" min="0" max="8" placeholder="0" value="2" style="width:60px; text-align:center;">
           <span style="font-size:0.9em; color:#555;">시간</span>
-          <input type="number" id="ai-mins" min="0" max="30" step="30" placeholder="0" value="0" style="width:60px; text-align:center;">
+          <input type="number" id="ai-mins" min="0" max="59" placeholder="0" value="0" style="width:60px; text-align:center;">
           <span style="font-size:0.9em; color:#555;">분</span>
         </div>
       </div>
@@ -1578,11 +1578,8 @@ document.addEventListener("mouseup", () => {
 document.getElementById("ai-submit-btn").addEventListener("click", async () => {
   const studyType = document.getElementById("ai-study-type").value;
   const hours = parseInt(document.getElementById("ai-hours").value) || 0;
-  let mins = parseInt(document.getElementById("ai-mins").value) || 0;
-  mins = mins >= 30 ? 30 : 0;
-
+  const mins = parseInt(document.getElementById("ai-mins").value) || 0;
   const totalMinutes = hours * 60 + mins;
-  document.getElementById("ai-mins").value = mins;
 
   if (totalMinutes < 30 || totalMinutes > 480) {
     alert("총 공부 시간은 30분~8시간 사이로 입력해주세요.");
