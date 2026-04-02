@@ -148,7 +148,7 @@ app.include_router(stats.router)
 
 
 
-## 4. CI/CD
+## 6. CI/CD
 
 * 본 프로젝트는 GitHub Actions를 기반으로 CI(지속적 통합)와 CD(지속적 배포)를 구성하였습니다.
 
