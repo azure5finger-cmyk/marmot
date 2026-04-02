@@ -7,7 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from jose import jwt, JWTError
 from passlib.context import CryptContext
 from pydantic import BaseModel, EmailStr, Field
-# from typing import Optional #
+from typing import Optional #
 from datetime import datetime, timedelta, timezone
 import os
 
