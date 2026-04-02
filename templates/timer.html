@@ -703,6 +703,20 @@
   display: none;
 }
 
+.top-left-logo {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  z-index: 2000;
+}
+
+.top-left-logo img {
+  width: 180px;
+  max-width: 28vw;
+  height: auto;
+  display: block;
+}
+
 @keyframes petalFall {
   0% {
     transform: translateY(0) rotate(0deg) translateX(0);
@@ -806,6 +820,11 @@
 
   <!-- 페이지 래퍼 시작 -->
   <div class="page-wrapper">
+
+  <!-- 토티 로고 -->
+  <div class="top-left-logo">
+    <img src="/static/toti-logo.png" alt="Toti logo">
+  </div>
 
   <!-- 우측 상단 버튼 -->
   <div class="top-right-buttons">
