@@ -32,6 +32,3 @@ Deployment Architecture
     ACCESS_TOKEN_EXPIRE_HOURS=2
 
 
-
-SECRET_KEY = os.getenv("SECRET_KEY", "dev-fallback-key") 배포 전 수정 해야 함
-

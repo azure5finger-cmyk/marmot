@@ -1435,10 +1435,27 @@ function attachMemoEvents(memoItem, isNew = true) {
 
   const loginBtn = document.getElementById("login-btn");
 
-// 로그인/로그아웃 버튼 상태 업데이트
-function updateLoginButton() {
+// 토큰 유효성 검증
+async function checkLoginStatus() {
   const token = localStorage.getItem("access_token");
-  if (token) {
+  if (!token) return false;
+
+  try {
+    const res = await fetch("/timer/api/timer-data", {
+      headers: { "Authorization": `Bearer ${token}` }
+    });
+    return res.ok; // 200이면 로그인 상태, 아니면 false
+  } catch (err) {
+    console.error("서버 연결 실패", err);
+    return false;
+  }
+}
+
+
+// 로그인/로그아웃 버튼 상태 업데이트
+async function updateLoginButton() {
+  const loggedIn = await checkLoginStatus();
+  if (loggedIn) {
     // 로그인 상태 → 로그아웃 아이콘
     loginBtn.innerHTML = `
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
