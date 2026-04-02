@@ -341,6 +341,15 @@
       z-index: 2000;
     }
 
+    .toti-logo {
+      width: 88px;
+      height: auto;
+      display: block;
+      margin-bottom: 6px;
+      filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.12));
+      pointer-events: none;
+}
+
     .circle-btn {
       width: 50px;
       height: 50px;
@@ -703,19 +712,6 @@
   display: none;
 }
 
-.top-left-logo {
-  position: absolute;
-  top: 20px;
-  left: 20px;
-  z-index: 2000;
-}
-
-.top-left-logo img {
-  width: 180px;
-  max-width: 28vw;
-  height: auto;
-  display: block;
-}
 
 @keyframes petalFall {
   0% {
@@ -821,13 +817,10 @@
   <!-- 페이지 래퍼 시작 -->
   <div class="page-wrapper">
 
-  <!-- 토티 로고 -->
-  <div class="top-left-logo">
-    <img src="/static/toti-logo.png" alt="Toti logo">
-  </div>
 
   <!-- 우측 상단 버튼 -->
   <div class="top-right-buttons">
+    <img class="toti-logo" src="/static/toti-logo.png" alt="Toti 로고">
     <!-- 마이페이지 버튼 -->
     <button class="circle-btn" id="mypage-btn" title="마이페이지">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
